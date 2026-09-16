@@ -258,6 +258,26 @@ thế hệ   120                   298,4
 Phá kỷ lục ở **mọi** mốc đo. Bản cũ chạy 5.900 thế hệ mà `best.npz` vẫn ghi
 `gen=1744` — tức là 4.000 thế hệ cuối không cải thiện được gì.
 
+Tự kiểm chứng bất cứ lúc nào — so bộ não đang nuôi với một bộ chưa học gì,
+trên cùng 6 mặt bằng cố định:
+
+```python
+from train.policy import GRUPolicy
+from train.rollout import evaluate
+from train.train import HOLDOUT
+
+best, meta = GRUPolicy.load("runs/demo/best.npz")
+for pol in (GRUPolicy(n_hidden=16, seed=1), best):
+    print(evaluate(pol, HOLDOUT, steps=400, n_robots=3).score)
+```
+
+Đo thật sau **15 thế hệ** (chưa tới 4 phút trên máy 4 nhân):
+
+```
+chưa học gì   điểm   9,8   nạp được 0,00
+sau 15 thế hệ điểm  52,5   nạp được 0,14
+```
+
 ---
 
 ## 6. Hai file, đừng nhầm
