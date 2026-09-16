@@ -503,8 +503,17 @@ class TrainScreen(Screen):
             messagebox.showerror("Loi", "Quan the phai it nhat 4")
             return
 
-        name = (os.path.basename(self.brain_path)[:-4]
-                if self.brain_path else "nao_moi")
+        # Ten thu muc chay. Neu bo nao duoc chon von da nam trong runs/ thi
+        # lay ten LAN CHAY do, khong lay ten file - chon "demo / state" ma
+        # tao ra runs/state/ thi lan sau khong ai tim ra no o dau.
+        if self.brain_path:
+            folder = os.path.dirname(os.path.abspath(self.brain_path))
+            if os.path.dirname(folder) == os.path.abspath(RUNS):
+                name = os.path.basename(folder)
+            else:
+                name = os.path.basename(self.brain_path)[:-4]
+        else:
+            name = "nao_moi"
         self.run_dir = os.path.join(RUNS, name)
         os.makedirs(self.run_dir, exist_ok=True)
         stop_file = os.path.join(self.run_dir, "STOP")

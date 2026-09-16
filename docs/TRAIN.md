@@ -198,9 +198,19 @@ số nơ-ron   16       GRU 48→16→2, 3.154 tham số
 giáo trình  600      sau ngần này thế hệ thì hết dễ
 ```
 
-Ước chừng **20–40 giây một thế hệ** trên máy bạn. Chạy qua đêm 10 tiếng ≈
-1.000–1.800 thế hệ. Bấm **DỪNG AN TOÀN** lúc nào cũng được, hôm sau chọn
-*Chạy tiếp* là đi tiếp từ đúng chỗ đó.
+Cách ước lượng thời gian, để bạn tự tính lại khi đổi cài đặt:
+
+```
+một thế hệ = quần thể × số tập × (số bước × số xe × 600 µs) ÷ tăng tốc song song
+```
+
+Với cài đặt trên, máy tôi đo (4 nhân) ra **13 giây một thế hệ**. Máy bạn 2
+nhân và mỗi nhân chậm hơn chừng hai lần, nên ước chừng **30–45 giây**. Chạy
+qua đêm 10 tiếng ≈ 800–1.200 thế hệ. Hạ `số bước/lần` xuống 250 thì còn
+**20–28 giây**.
+
+Bấm **DỪNG AN TOÀN** lúc nào cũng được, hôm sau chọn *Chạy tiếp* là đi tiếp
+từ đúng chỗ đó — không mất gì, kể cả mô-men của AdamW và bộ chuẩn hoá.
 
 **Train nhỏ, đánh giá lớn.** Huấn luyện trên mặt bằng 3 xe / 3 hộc cho rẻ,
 rồi xem nó chạy trên mặt bằng 5 xe. Chính sách là của từng xe và chỉ nhìn
