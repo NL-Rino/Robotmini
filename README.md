@@ -97,3 +97,9 @@ docs/SIM.md         thiết kế, 48 đầu vào, và các con số kèm lý do
 
 Chi tiết: [docs/SIM.md](docs/SIM.md) — thiết kế mô phỏng.
 [docs/TRAIN.md](docs/TRAIN.md) — cách dạy bộ não và vì sao bản cũ không tới đâu.
+
+---
+
+**Bản v2 — con xe có mắt** nằm ở [`v2/`](v2/README.md): vẫn con robot này
+nhưng thêm một camera và một servo ngửa lên cúi xuống, mô phỏng 3D thật, chạy
+theo lô trên GPU. Đó là một dự án riêng, không đụng gì tới bản này.

@@ -1,4 +1,5 @@
 *.npz
+*.pt
 *.pyc
 __pycache__/
 runs/
