@@ -21,7 +21,8 @@ chạy trên laptop. Đây là bản **làm lại phần mô phỏng** theo bố
 
 ```
 pip install numpy
-python tests/test_sim.py                    # 31/31
+python tests/test_sim.py                    # 31/31  mô phỏng
+python tests/test_link.py                   #  7/7   xe <-> wifi <-> não
 python -m tools.run_fleet                   # chạy MÃI, Ctrl-C để ngắt não
 python -m tools.run_fleet --view 10 --realtime
 python -m tools.run_fleet --seconds 600 --rescue 60
@@ -61,7 +62,7 @@ sim/
 brain/rule_brain.py bộ luật viết tay — BẢN MẪU để xem, không phải giáo án
 link/               giao thức UDP, bộ não trên laptop, phía xe
 tools/run_fleet.py  trình chạy + bản đồ ASCII
-tests/test_sim.py   31 bài
+tests/            38 bài (31 mô phỏng + 7 đường truyền)
 docs/SIM.md         thiết kế, 48 đầu vào, và các con số kèm lý do
 ```
 

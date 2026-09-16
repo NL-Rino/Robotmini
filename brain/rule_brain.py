@@ -292,11 +292,11 @@ class RuleBrain:
         self._go("ap-mieng", t)
 
     # ------------------------------------------------------------------ cac trang thai
-    def _st_long_nhong(self, obs, t, dt, in_slot, id_ok, soc):
+    def _st_long_nhong(self, obs, t, dt, in_slot, id_ok, soc, chase_call=True):
         a = self._avoid(obs, 0.45)
         if a is not None:
             return a
-        seen = float(obs[PC.I_IR + 0]) > 0.5
+        seen = chase_call and float(obs[PC.I_IR + 0]) > 0.5
         if seen:
             bear = math.atan2(float(obs[PC.I_IR + 1]), float(obs[PC.I_IR + 2]))
             return _drive(0.42, max(-1.8, min(1.8, 2.0 * bear)))
@@ -334,7 +334,10 @@ class RuleBrain:
             if self._in_state(t) > 6.0:
                 self._go("tim-hoc", t)
                 return 0.0, 0.0
-            return self._st_long_nhong(obs, t, dt, in_slot, id_ok, soc)
+            # Dang di tim cho sac thi dung chay theo den GOI nua - hai cai
+            # den o hai kenh khac nhau va luc nay chi mot cai co nghia.
+            return self._st_long_nhong(obs, t, dt, in_slot, id_ok, soc,
+                                       chase_call=False)
 
         # Diem cho: tren truc, truoc mieng 0,65 m.
         tx = sx + 0.65 * math.cos(sa)
@@ -357,25 +360,38 @@ class RuleBrain:
         if self.tries >= 2:
             known = False
         ir_on, ir_bear = self._ir_dock(obs)
+        span = self._in_state(t)
 
         pick = self._pick(obs, t, max_range=2.2)
         if pick is not None and (ir_on or self.tries >= 3):
             self._commit(pick, t)
             return _drive(0.2, 0.0)
 
-        span = self._in_state(t)
-        # Quay mat ve phia cho nho (hoac phia den) cho bo do nhin thau.
-        aim = math.atan2(sy, sx) if known else (ir_bear if ir_on else None)
+        if ir_on:
+            # Den nam giua thanh trong va bi chinh hai vach ben bop lai con
+            # +-33 do. Nghia la: da THAY duoc den thi dang dung trong hinh
+            # non truoc mieng hoc roi. Cu lai thang ve phia den la tu dong
+            # ra dung truoc mieng, khong can tinh toan gi them. Day la mon
+            # qua cua hinh hoc, truoc day bo phi.
+            if abs(ir_bear) > 0.12:
+                return _drive(0.0, max(-1.5, min(1.5, 2.2 * ir_bear)))
+            if _fan(obs, 0) > 0.72:
+                return _drive(0.32, 0.0)
+            # Da sat mieng ma bo do van chua cham diem: lui ra mot chut cho
+            # no nhin duoc ca long hoc.
+            return _drive(-0.20, 0.0)
+
+        # Chua thay den: quay mat ve cho nho roi quet mot vong.
+        aim = math.atan2(sy, sx) if known else None
         if aim is not None and abs(aim) > 0.15 and span < 4.0:
             return _drive(0.0, max(-1.5, min(1.5, 2.0 * aim)))
         if span < 7.0:
             return _drive(0.0, 1.1 * self.orbit_dir)     # quet mot vong
         if span < 12.0:
-            # Chua thay: di vong cung quanh cho nho de doi goc nhin.
             a = self._avoid(obs, 0.35)
             if a is not None:
                 return a
-            return _drive(0.28, 0.9 * self.orbit_dir)
+            return _drive(0.28, 0.9 * self.orbit_dir)    # doi cho de doi goc nhin
         self.tries += 1
         self.orbit_dir = -self.orbit_dir
         self._go("ve-tram", t)

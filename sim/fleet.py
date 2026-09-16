@@ -13,6 +13,7 @@ Hai diem khac han ban cu:
 """
 
 import math
+import random
 import time
 
 from . import params as P
@@ -92,6 +93,9 @@ class FleetSim:
         self.rescue_seconds = rescue_seconds
         self.t = 0.0
         self.steps = 0
+        # RNG rieng cua tung mo phong: hai FleetSim cung seed phai cho ra
+        # dung mot ket qua, khong an ke nhau qua mot bien toan cuc.
+        self._rng = random.Random(90210 + seed)
         self.log = []
         self.log_limit = log_limit
 
@@ -155,7 +159,7 @@ class FleetSim:
     # ------------------------------------------------------------------ mot buoc
     def step(self, commands):
         dt = self.dt
-        self.world.step_dynamics(dt, _RNG)
+        self.world.step_dynamics(dt, self._rng)
 
         for r in self.robots:
             cl, cr = commands.get(r.id, (0.0, 0.0))
@@ -282,7 +286,3 @@ class FleetSim:
                            "dang sac" if r.charging else
                            "cam nham hoc" if r.in_slot else "dang chay"),
         }
-
-
-import random as _random
-_RNG = _random.Random(12345)

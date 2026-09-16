@@ -216,6 +216,29 @@ class TestDockContact(unittest.TestCase):
         self.assertLess(r.battery, 0.5, "cam nham hoc ma pin van tut, khong he nap")
         self.assertGreaterEqual(r.n_wrong_dock, 1)
 
+    def test_bi_huc_nhe_thi_khong_roi_dien(self):
+        """Chan tiep dien that la mieng dong co lo xo, khong phai mot diem.
+
+        Khong co do lu bu nay thi moi cu huc nhe cua xe khac lai lam roi
+        dien roi bat lai, va so lan sac dem ra vai chuc lan trong mot phut.
+        """
+        import random
+        rng = random.Random(1)
+        x, y, th = docked_pose(self.d)
+        r = Robot(0, x, y, th, dock_code=self.code, seed=1)
+        r.battery = 0.2
+        lost = 0
+        for _ in range(400):
+            r.x = x + rng.uniform(-0.010, 0.010)
+            r.y = y + rng.uniform(-0.010, 0.010)
+            c = sensors.dock_contact(self.w, r.x, r.y, r.th, r.code,
+                                     engaged=r.in_slot)
+            was = r.charging
+            r.step_power(P.DT, c)
+            lost += int(was and not r.charging)
+        self.assertEqual(lost, 0)
+        self.assertEqual(r.n_charges, 1)
+
     def test_dem_cam_nham_theo_LAN_chu_khong_theo_buoc(self):
         other = [d for d in self.w.docks
                  if d.code is not None and d.code != self.code][0]
