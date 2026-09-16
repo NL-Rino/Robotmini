@@ -137,10 +137,21 @@ không có góc thật. Bài `test_khu_nhoe_chi_dung_odometry` cho odometry lệ
 6. kiểm tra **bề rộng thành trong ~31 cm** — góc tường cũng lõm cũng đủ sâu,
    nhưng chỗ sâu nhất của nó là một *điểm*, không phải một *mặt phẳng*
 
-Đo được (ba mặt bằng, 180 tư thế ngẫu nhiên): nhìn trong ±15° thì lệch vị
-trí trung vị **0,3–0,7 cm**, lệch trục **1,5–4°**; ngoài ±45° thì mù hẳn —
-đúng như vật lý, vì không nhìn thấu lòng hộc được. Báo giả thật sự (cách mọi
-hộc trên 0,8 m) khoảng **10%**.
+Đo được (`python -m tools.measure detector`, ba mặt bằng, 180 tư thế ngẫu
+nhiên):
+
+| | |
+|---|---|
+| lệch vị trí trung vị, tư thế ngẫu nhiên | **1,9 cm** |
+| lệch trục trung vị, tư thế ngẫu nhiên | **3,6°** |
+| lệch vị trí khi nhìn trong ±15° | **0,3–0,7 cm** |
+| lệch trục khi nhìn trong ±15° | **1,5–4°** |
+| báo giả thật sự (cách mọi hộc trên 0,8 m) | **10%** |
+| ngoài ±45° | mù hẳn |
+
+Mù hẳn ngoài ±45° không phải khiếm khuyết: từ góc đó thì hai vách bên che
+mất lòng hộc, LiDAR *không thể* nhìn thấu. Cũng chính vì thế mà "phải vòng
+ra đối diện cửa" là bắt buộc chứ không phải lựa chọn.
 
 **Odometry.** Sai số 2,5% là sai số **đường kính chung cả hai bánh** (làm sai
 quãng đường), còn cái làm sai *hướng* là phần **lệch giữa hai bánh**, đặt
@@ -171,7 +182,25 @@ không gặp chuyện này vì lớp cưỡng ép cướp quyền lái và tự 
 
 Các con số khác trong `sim/params.py` đều có ghi lý do ngay tại chỗ.
 
-## 5. Bộ luật viết tay dùng để làm gì
+## 5. Đo được gì
+
+Chạy lại bằng `python -m tools.measure all`.
+
+| phép đo | kết quả |
+|---|---|
+| đèn báo sáng → xe **tự về được hộc của mình** | **67/100** (5 mặt bằng × 4 lượt × 5 xe) |
+| số lần cắm nhầm hộc của xe khác mỗi lượt về | **0,4** |
+| tốc độ | ~880 µs/bước/xe, nhanh hơn thời gian thật **11 lần** với 5 xe |
+
+Con số 0,4 lần cắm nhầm mỗi lượt chính là cơ chế bạn yêu cầu đang chạy: năm
+cái hộc giống hệt nhau, odometry đã trôi, nên xe **phải** cắm thử mới biết.
+33 lượt còn lại là xe hết pin trước khi tìm ra hộc của nó — đó là bài toán
+thật sau khi bỏ lớp cưỡng ép, không phải lỗi mô phỏng.
+
+Để so sánh: bộ luật viết tay của bản cũ đạt 0,414 lần sạc mỗi tập với **một**
+xe và **một** hộc, không có hộc nào giống nó để cắm nhầm.
+
+## 6. Bộ luật viết tay dùng để làm gì
 
 `brain/rule_brain.py` **chỉ đọc 48 đầu vào** như bộ não học được: không nhìn
 toạ độ thật, không biết hộc nào mang mã nào, không biết mình đang ở đâu trên
@@ -185,7 +214,7 @@ yêu cầu — không dạy trước.
 Máy trạng thái: `long-nhong → ve-tram → tim-hoc → ap-mieng → chinh-truc →
 lui-vao → hoi-ma → dang-sac → rut-ra`.
 
-## 6. Nhật ký lỗi của chính bản làm lại này
+## 7. Nhật ký lỗi của chính bản làm lại này
 
 Những cái đã cắn, để khỏi cắn lại:
 

@@ -26,7 +26,11 @@ python tests/test_link.py                   #  7/7   xe <-> wifi <-> não
 python -m tools.run_fleet                   # chạy MÃI, Ctrl-C để ngắt não
 python -m tools.run_fleet --view 10 --realtime
 python -m tools.run_fleet --seconds 600 --rescue 60
+python -m tools.measure all                 # đo lại các con số trong docs
 ```
+
+Đo được: đèn báo sáng thì **67/100** xe tự về được đúng hộc của mình, với
+**0,4** lần cắm nhầm hộc mỗi lượt — chính là cơ chế mã dock đang chạy.
 
 Não chạy ở tiến trình khác (như khi chạy thật: não trên laptop, xe qua wifi):
 
@@ -62,6 +66,7 @@ sim/
 brain/rule_brain.py bộ luật viết tay — BẢN MẪU để xem, không phải giáo án
 link/               giao thức UDP, bộ não trên laptop, phía xe
 tools/run_fleet.py  trình chạy + bản đồ ASCII
+tools/measure.py    đo lại: tỉ lệ về được trạm, độ chính xác bộ dò, tốc độ
 tests/            38 bài (31 mô phỏng + 7 đường truyền)
 docs/SIM.md         thiết kế, 48 đầu vào, và các con số kèm lý do
 ```
