@@ -54,38 +54,36 @@ def _split_runs(xs, ys, rs, valid):
     Giu ca doan RAT NGAN (2 diem). Khi nhin thang vao hoc, hai canh vat o
     mieng chi con 2-3 diem; vut chung di la mat luon hai dau day cung va do
     sau do duoc bi hut mot nua. MIN_POINTS chi ap o buoc phan tich nhom.
+
+    Viet bang numpy chu khong phai vong lap Python: ham nay chay mot lan moi
+    vong quet tren 500 diem va la mot trong nhung cho ton nhat cua mo phong.
     """
-    runs = []
-    cur = []
     n = xs.shape[0]
-    for i in range(n):
-        if not valid[i]:
-            if len(cur) >= 2:
-                runs.append(cur)
-            cur = []
-            continue
-        if cur:
-            j = cur[-1]
-            if abs(rs[i] - rs[j]) > BREAK_GAP:
-                if len(cur) >= 2:
-                    runs.append(cur)
-                cur = []
-        cur.append(i)
-    if len(cur) >= 2:
-        runs.append(cur)
+    if n < 2:
+        return []
+    v = np.asarray(valid, dtype=bool)
+    # Mot diem mo dau doan moi khi: no la diem dau tien, hoac chinh no hong,
+    # hoac diem truoc no hong, hoac khoang cach nhay vot.
+    cut = np.empty(n, dtype=bool)
+    cut[0] = True
+    cut[1:] = (~v[1:]) | (~v[:-1]) | (np.abs(rs[1:] - rs[:-1]) > BREAK_GAP)
+
+    bounds = np.nonzero(cut)[0]
+    pieces = np.split(np.arange(n), bounds[1:])
+    runs = [p for p in pieces if p.size >= 2 and v[p[0]]]
+
     # Vong quet la vong tron: noi doan dau voi doan cuoi neu lien tuc.
     if len(runs) >= 2 and runs[0][0] == 0 and runs[-1][-1] == n - 1:
-        if abs(rs[runs[0][0]] - rs[runs[-1][-1]]) <= BREAK_GAP:
-            runs[0] = runs[-1] + runs[0]
+        if abs(rs[0] - rs[n - 1]) <= BREAK_GAP:
+            runs[0] = np.concatenate((runs[-1], runs[0]))
             runs.pop()
     return runs
 
 
 def _analyse_run(idx, xs, ys):
     """Do lom cua mot doan, co day cung cho het loi, roi lay truc."""
-    ii = np.asarray(idx, dtype=int)
-    px = xs[ii]
-    py = ys[ii]
+    px = xs[idx]
+    py = ys[idx]
 
     lo, hi = 0, px.shape[0] - 1
     for _ in range(6):
@@ -186,7 +184,7 @@ def _analyse_run(idx, xs, ys):
 
 
 def _gap(i, j, xs, ys):
-    return math.hypot(xs[i] - xs[j], ys[i] - ys[j])
+    return math.hypot(float(xs[i] - xs[j]), float(ys[i] - ys[j]))
 
 
 def _groups(runs, xs, ys):
@@ -198,12 +196,12 @@ def _groups(runs, xs, ys):
     ngay giua long hoc. Khe ho toi thanh sau hoc thi rong hon han (>= do sau
     hoc) nen khong bi noi nham.
     """
-    out = [list(r) for r in runs]
+    out = list(runs)
     n = len(runs)
     if n < 2:
         return out
     for start in range(n):
-        chain = list(runs[start])
+        chain = runs[start]
         prev = start
         for k in range(1, min(n, 4)):
             j = (start + k) % n
@@ -211,11 +209,11 @@ def _groups(runs, xs, ys):
                 break
             if _gap(runs[prev][-1], runs[j][0], xs, ys) > MERGE_GAP:
                 break
-            chain = chain + list(runs[j])
+            chain = np.concatenate((chain, runs[j]))
             prev = j
-            if len(chain) > 400:
+            if chain.size > 400:
                 break
-            out.append(list(chain))
+            out.append(chain)
     return out
 
 
@@ -233,21 +231,20 @@ def detect(scan, max_candidates=P.N_DOCK_CANDIDATES):
 
     runs = _split_runs(xs, ys, r, valid)
     out = []
-    for grp in _groups(runs, xs, ys):
-        if len(grp) < MIN_POINTS:
+    for gi in _groups(runs, xs, ys):
+        if gi.size < MIN_POINTS:
             continue
         # Loc tho truoc khi phan tich: hoc chi rong 40 cm sau 31 cm, nen ca
         # cum diem cua no khong the trai qua mot o vuong 0,9 m. Phep thu nay
         # O(1) va vut di khoang chin phan muoi so nhom, con phan tich day du
         # thi ton hon nhieu lan.
-        gi = np.asarray(grp, dtype=int)
         gx, gy = xs[gi], ys[gi]
         if (gx.max() - gx.min()) > 0.9 or (gy.max() - gy.min()) > 0.9:
             continue
         chord = math.hypot(gx[-1] - gx[0], gy[-1] - gy[0])
         if chord < 0.8 * MIN_WIDTH or chord > 2.0 * MAX_WIDTH:
             continue
-        c = _analyse_run(grp, xs, ys)
+        c = _analyse_run(gi, xs, ys)
         if c is not None:
             out.append(c)
     out.sort(key=lambda c: -c.score)

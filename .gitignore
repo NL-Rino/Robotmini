@@ -1,4 +1,4 @@
-__pycache__/
-*.pyc
-runs/
 *.npz
+*.pyc
+__pycache__/
+runs/

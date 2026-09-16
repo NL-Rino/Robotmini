@@ -21,11 +21,28 @@ chạy trên laptop. Đây là bản **làm lại phần mô phỏng** theo bố
 
 ```
 pip install numpy
-python tests/test_sim.py                    # 31/31  mô phỏng
+python app.py                               # PHẦN MỀM CÓ GIAO DIỆN
+```
+
+Ba màn hình:
+
+- **Chính** — chọn bộ não, *Xem xe chạy*, *Tạo bộ não mới*, *Huấn luyện*
+- **Huấn luyện** — chạy tiến hoá ở một tiến trình riêng, có biểu đồ điểm
+  chạy trực tiếp. Nút **DỪNG AN TOÀN** ghi một file `STOP`, chờ thế hệ đang
+  chạy xong và lưu `state.npz`, rồi mới cho về màn hình chính. Lần sau chọn
+  *Chạy tiếp* là đi tiếp từ đúng chỗ đó.
+- **Xem chạy** — thả 1–5 xe ra mặt bằng và nhìn. Chấm ở đuôi xe là chân
+  tiếp điện: xanh = đang có điện, đỏ = cắm rồi mà không ra điện.
+
+Dòng lệnh, nếu cần:
+
+```
+python tests/test_sim.py                    # 32/32  mô phỏng
 python tests/test_link.py                   #  7/7   xe <-> wifi <-> não
+python tests/test_train.py                  # 20/20  huấn luyện
 python -m tools.run_fleet                   # chạy MÃI, Ctrl-C để ngắt não
 python -m tools.run_fleet --view 10 --realtime
-python -m tools.run_fleet --seconds 600 --rescue 60
+python -m train.train --out runs/thu1 --jobs 4
 python -m tools.measure all                 # đo lại các con số trong docs
 ```
 
@@ -53,6 +70,7 @@ o = người đi lại   * = đèn gọi   ~ = vực
 ## Cấu trúc
 
 ```
+app.py           PHẦN MỀM GIAO DIỆN (Tkinter, không phải cài gì thêm)
 sim/
   params.py        mọi con số, kèm lý do chọn
   geometry.py      ray-cast vector hoá trên đoạn thẳng và đường tròn
@@ -65,10 +83,17 @@ sim/
   fleet.py         vòng lặp nhiều xe, chạy tới khi mất não
 brain/rule_brain.py bộ luật viết tay — BẢN MẪU để xem, không phải giáo án
 link/               giao thức UDP, bộ não trên laptop, phía xe
+train/
+  policy.py        GRU 48 -> 16 -> 2 numpy thuần, kèm bộ chuẩn hoá đầu vào
+  reward.py        hàm phần thưởng
+  rollout.py       một lần đánh giá + GIÁO TRÌNH NGƯỢC
+  es.py            tiến hoá: đối gương, xếp hạng, AdamW
+  train.py         vòng lặp, file trạng thái, file STOP
 tools/run_fleet.py  trình chạy + bản đồ ASCII
-tools/measure.py    đo lại: tỉ lệ về được trạm, độ chính xác bộ dò, tốc độ
+tools/measure.py    đo lại: tỉ lệ về trạm, độ chính xác bộ dò, tốc độ, nhiễu
 tests/            38 bài (31 mô phỏng + 7 đường truyền)
 docs/SIM.md         thiết kế, 48 đầu vào, và các con số kèm lý do
 ```
 
-Chi tiết thiết kế: [docs/SIM.md](docs/SIM.md).
+Chi tiết: [docs/SIM.md](docs/SIM.md) — thiết kế mô phỏng.
+[docs/TRAIN.md](docs/TRAIN.md) — cách dạy bộ não và vì sao bản cũ không tới đâu.

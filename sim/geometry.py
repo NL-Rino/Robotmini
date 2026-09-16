@@ -51,7 +51,8 @@ def to_world(px, py, ox, oy, otheta):
 class SegmentSet:
     """Tap doan thang tinh, luu duoi dang mang numpy de ray-cast mot lan."""
 
-    __slots__ = ("ax", "ay", "bx", "by", "ex", "ey", "tag")
+    __slots__ = ("ax", "ay", "bx", "by", "ex", "ey", "tag",
+                 "_rax", "_ray", "_rex", "_rey")
 
     def __init__(self, segments=(), tags=None):
         segs = list(segments)
@@ -65,6 +66,13 @@ class SegmentSet:
         self.ex = self.bx - self.ax
         self.ey = self.by - self.ay
         self.tag = list(tags) if tags is not None else [None] * n
+        # Ban float32 dung san theo hang, de raycast khoi phai reshape va
+        # khoi phai keo gap doi bo nho moi lan goi. LiDAR do theo mili met
+        # nen float32 du chinh xac gap boi lan.
+        self._rax = self.ax.astype(np.float32)[None, :]
+        self._ray = self.ay.astype(np.float32)[None, :]
+        self._rex = self.ex.astype(np.float32)[None, :]
+        self._rey = self.ey.astype(np.float32)[None, :]
 
     def __len__(self):
         return self.ax.shape[0]
@@ -105,39 +113,40 @@ def raycast_segments(ox, oy, angles, seg, max_range):
     Tia khong trung gi tra ve `max_range`. Do phuc tap M*N nhung chay
     hoan toan trong numpy nen mot vong quet 460 tia x ~80 doan van re.
     """
-    angles = np.asarray(angles, dtype=float)
+    angles = np.asarray(angles, dtype=np.float32)
     if len(seg) == 0:
-        return np.full(angles.shape, float(max_range))
+        return np.full(angles.shape, float(max_range), dtype=np.float32)
 
     dx = np.cos(angles)[:, None]
     dy = np.sin(angles)[:, None]
 
-    ex = seg.ex[None, :]
-    ey = seg.ey[None, :]
-    aox = (seg.ax - ox)[None, :]
-    aoy = (seg.ay - oy)[None, :]
+    ex = seg._rex
+    ey = seg._rey
+    aox = seg._rax - np.float32(ox)
+    aoy = seg._ray - np.float32(oy)
 
     denom = dx * ey - dy * ex
-    safe = np.where(np.abs(denom) < 1e-12, 1.0, denom)
+    bad = np.abs(denom) < 1e-9
+    safe = np.where(bad, np.float32(1.0), denom)
 
-    t = (aox * ey - aoy * ex) / safe          # doc theo tia
     u = (aox * dy - aoy * dx) / safe          # doc theo doan
-
-    ok = (np.abs(denom) >= 1e-12) & (t > 1e-9) & (u >= 0.0) & (u <= 1.0)
-    t = np.where(ok, t, np.inf)
+    ok = ~bad & (u >= 0.0) & (u <= 1.0)
+    t = (aox * ey - aoy * ex) / safe          # doc theo tia
+    ok &= t > 1e-6
+    t = np.where(ok, t, np.float32(np.inf))
     best = t.min(axis=1)
-    return np.minimum(best, float(max_range))
+    return np.minimum(best, np.float32(max_range))
 
 
 def raycast_circles(ox, oy, angles, circles, max_range):
     """Nhu tren nhung voi danh sach duong tron [(cx, cy, r), ...]."""
-    angles = np.asarray(angles, dtype=float)
+    angles = np.asarray(angles, dtype=np.float32)
     if not circles:
-        return np.full(angles.shape, float(max_range))
+        return np.full(angles.shape, float(max_range), dtype=np.float32)
 
-    arr = np.asarray(circles, dtype=float)
-    cx = arr[:, 0][None, :] - ox
-    cy = arr[:, 1][None, :] - oy
+    arr = np.asarray(circles, dtype=np.float32)
+    cx = arr[:, 0][None, :] - np.float32(ox)
+    cy = arr[:, 1][None, :] - np.float32(oy)
     r = arr[:, 2][None, :]
 
     dx = np.cos(angles)[:, None]
@@ -153,9 +162,9 @@ def raycast_circles(ox, oy, angles, circles, max_range):
     t_far = b + sq
     t = np.where(t_near > 1e-9, t_near, t_far)  # goc tia nam trong hinh tron
     ok = valid & (t > 1e-9)
-    t = np.where(ok, t, np.inf)
+    t = np.where(ok, t, np.float32(np.inf))
     best = t.min(axis=1)
-    return np.minimum(best, float(max_range))
+    return np.minimum(best, np.float32(max_range))
 
 
 def raycast(ox, oy, angles, seg, circles, max_range):

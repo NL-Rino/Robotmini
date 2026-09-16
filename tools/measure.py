@@ -97,6 +97,64 @@ def measure_detector(seeds=(3, 5, 8), trials=60):
           f"lech truc trung vi {np.median(ax_err):.1f} do")
 
 
+def measure_crn(dirs=4, n_seeds=40, steps=300, robots=2, sigma=0.05,
+                seed=7, verbose=True):
+    """Chung so ngau nhien giup duoc bao nhieu.
+
+    ES xep hang theo d = f(theta+sigma*eps) - f(theta-sigma*eps).
+
+      cham rieng: Var(d) = Var(f+) + Var(f-)
+      cham chung: Var(d) = Var(f+) + Var(f-) - 2*Cov = 2*Var*(1 - rho)
+
+    Nen toan bo cai loi cua chung so ngau nhien nam gon trong MOT con so:
+    rho, he so tuong quan giua diem cua hai ca the khi chay tren cung mot
+    hat giong. rho = 0,8 thi nhieu con mot nua; rho = 0 thi khong loi gi.
+
+    Do rho truc tiep on dinh hon han do thang Var(d): phuong sai uoc luong
+    tu 10 lan lay mau thi ban than no da sai so hon hai lan roi, hai lan do
+    ra nguoc nhau la chuyen thuong. Da mat hai lan do vi cho nay.
+    """
+    from train.es import noise
+    from train.policy import GRUPolicy
+    from train.rollout import rollout
+
+    pol = GRUPolicy(n_hidden=16, seed=1)
+    base = pol.theta.copy()
+    rng = random.Random(seed)
+    seeds = [rng.randrange(2 ** 30) for _ in range(n_seeds)]
+
+    rhos, sds = [], []
+    for i in range(dirs):
+        eps = noise(pol.n_params, 500, i)
+        cols = []
+        for sign in (1.0, -1.0):
+            pol.set_theta(base + sign * sigma * eps)
+            cols.append([rollout(pol, sd, steps=steps, n_robots=robots,
+                                 progress=0.0, collect_obs=False).score
+                         for sd in seeds])
+        a_ = np.array(cols[0])
+        b_ = np.array(cols[1])
+        sds.append(0.5 * (a_.std(ddof=1) + b_.std(ddof=1)))
+        da = a_ - a_.mean()
+        db = b_ - b_.mean()
+        den = np.linalg.norm(da) * np.linalg.norm(db)
+        rhos.append(float(np.dot(da, db) / den) if den > 1e-9 else 0.0)
+
+    pol.set_theta(base)
+    rho = float(np.mean(rhos))
+    cut = math.sqrt(max(0.0, 1.0 - rho))
+    se = (1.0 - rho * rho) / math.sqrt(max(1, n_seeds - 3))
+    if verbose:
+        print(f"  tuong quan diem hai ca the tren cung hat giong: "
+              f"rho = {rho:+.2f} (+-{se:.2f})")
+        print("  tung huong: " + ", ".join(f"{r:+.2f}" for r in rhos))
+        print(f"  -> chung hat giong cat nhieu cua d xuong con "
+              f"{100 * cut:.0f}%")
+        print(f"  do lech chuan diem giua cac hat giong: {np.mean(sds):.1f}"
+              f"  ({n_seeds} hat giong, {steps} buoc, {robots} xe)")
+    return rho, cut
+
+
 def measure_speed(seconds=120.0):
     sim = FleetSim(seed=3, n_robots=5)
     lb = LocalBrains(factory(1), sim.robot_ids)
@@ -110,7 +168,7 @@ def measure_speed(seconds=120.0):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Do lai cac con so cua mo phong")
-    ap.add_argument("what", choices=("homing", "detector", "speed", "all"))
+    ap.add_argument("what", choices=("homing", "detector", "speed", "crn", "all"))
     a = ap.parse_args(argv)
     if a.what in ("detector", "all"):
         print("== bo do hoc ==")
@@ -118,6 +176,9 @@ def main(argv=None):
     if a.what in ("speed", "all"):
         print("== toc do ==")
         measure_speed()
+    if a.what in ("crn", "all"):
+        print("== chung so ngau nhien giup duoc bao nhieu ==")
+        measure_crn()
     if a.what in ("homing", "all"):
         print("== ve tram sau khi den bao sang ==")
         measure_homing()

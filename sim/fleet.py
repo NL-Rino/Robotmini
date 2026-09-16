@@ -20,6 +20,7 @@ from . import params as P
 from . import sensors
 from . import dock_detector
 from . import perception
+from .geometry import point_segment_distance, wrap_pi_scalar
 from .robot import Robot
 from .world import make_fleet_map
 
@@ -131,6 +132,69 @@ class FleetSim:
             r.charging = c.charging
             if c.dock is not None:
                 c.dock.occupied_by = r.id
+
+    def place_robot(self, rid, x, y, th, battery=None, station=None,
+                    station_drift=0.0, rng=None):
+        """Dat mot xe vao trang thai bat ky. Dung cho giao trinh nguoc.
+
+        `station_drift` la sai so cua BO NHO TRAM tinh bang met. Xe that chay
+        mot lat la cho nho lech vai met; neu luc huan luyen lan nao cho nho
+        cung dung chinh xac thi bo nao se hoc cach tin vao no, roi ra doi
+        gap cho nho lech 4 m la chiu.
+        """
+        r = self.robots[rid]
+        r.x, r.y, r.th = float(x), float(y), wrap_pi_scalar(float(th))
+        r.vl = r.vr = r.v = r.w = 0.0
+        r.cmd_l = r.cmd_r = 0.0
+        r.bump = 0.0
+        r.stranded = False
+        r.fallen = False
+        r.brain_lost = False
+        r.lidar.reset()
+        r.ox, r.oy, r.oth = r.x, r.y, r.th
+        if battery is not None:
+            r.battery = float(battery)
+            r.low_lamp = r.battery < P.BATT_LOW
+        r.dist_since_charge = 0.0
+
+        d = self.home[rid] if station is None else station
+        sx, sy, sth = d.x, d.y, d.theta
+        if station_drift > 0.0:
+            g = rng if rng is not None else self._rng
+            ang = g.uniform(-math.pi, math.pi)
+            sx += station_drift * math.cos(ang)
+            sy += station_drift * math.sin(ang)
+            sth = wrap_pi_scalar(sth + g.gauss(0.0, 0.12 * station_drift))
+        # Bo nho tram nam trong HE ODOM cua xe; ngay sau khi dat lai thi he
+        # odom trung he that, nen ghi thang toa do vao duoc.
+        r.station = (sx, sy, sth)
+
+        c = sensors.dock_contact(self.world, r.x, r.y, r.th, r.code)
+        r.contact = c
+        r.in_slot = c.in_slot
+        r.id_signal = c.id_signal
+        r.charging = c.charging
+        self._disabled_since[rid] = None
+        self._cands[rid] = []
+
+    def free_pose(self, rng, tries=60):
+        """Mot cho dung duoc trong phong: tren san, khong dam vao gi."""
+        x0, y0, x1, y1 = self.world.bounds
+        for _ in range(tries):
+            x = rng.uniform(x0 + 0.4, x1 - 0.4)
+            y = rng.uniform(y0 + 0.4, y1 - 0.4)
+            if not self.world.on_floor(x, y):
+                continue
+            d = point_segment_distance(x, y, self.world.static_segments)
+            if d.size and float(d.min()) < P.BODY_RADIUS + 0.10:
+                continue
+            if any(math.hypot(x - r.x, y - r.y) < 2 * P.BODY_RADIUS + 0.1
+                   for r in self.robots):
+                continue
+            return x, y, rng.uniform(-math.pi, math.pi)
+        cx = 0.5 * (x0 + x1)
+        cy = 0.5 * (y0 + y1)
+        return cx, cy, rng.uniform(-math.pi, math.pi)
 
     # ------------------------------------------------------------------ cam nhan
     def _circles_for(self, robot):
