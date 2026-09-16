@@ -146,6 +146,30 @@ class TestRollout(unittest.TestCase):
         for mix in (phase_mix(0.0), phase_mix(0.5), phase_mix(1.0)):
             self.assertAlmostEqual(sum(mix), 1.0, places=6)
 
+    def test_khong_dat_hai_xe_chong_len_nhau(self):
+        """Mot cai hoc chi cho mot xe.
+
+        Truoc day xe nay duoc dat vao hoc cua no con xe kia duoc dat ngau
+        nhien vao dung cai hoc do: hai than xe chong len nhau, bo giai va
+        cham day nhau ra, va ca hai bat dau lan danh gia bang mot cu va
+        vao vach - diem thap vi mot loi dat xe, khong phai vi bo nao do.
+        """
+        import math
+        import random as _r
+        from sim import params as _P
+        from sim.fleet import FleetSim as _F
+        from sim.world import make_fleet_map as _mk
+        from train.rollout import _place
+        for seed in range(40):
+            sim = _F(_mk(seed, n_docks=3, n_decoys=1), n_robots=3, seed=seed)
+            _place(sim, _r.Random(seed * 7919 + 13), phase_mix(0.0), 2.5)
+            for i, a in enumerate(sim.robots):
+                for b in sim.robots[i + 1:]:
+                    self.assertGreaterEqual(
+                        math.hypot(a.x - b.x, a.y - b.y),
+                        2 * _P.BODY_RADIUS - 0.01,
+                        f"hai xe chong len nhau o mat bang {seed}")
+
     def test_thu_thap_duoc_thong_ke_dau_vao(self):
         p = GRUPolicy(n_hidden=12, seed=2)
         r = rollout(p, 9, steps=60, n_robots=2, collect_obs=True)

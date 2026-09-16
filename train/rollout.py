@@ -82,11 +82,21 @@ def _place(sim, rng, mix, station_drift):
     """Dat tung xe vao mot pha, moi xe mot cai hoc khac nhau."""
     docks = [d for d in sim.world.docks]
     rng.shuffle(docks)
-    used = 0
+    # Mot cai hoc chi cho MOT xe. Truoc day xe nay duoc dat vao hoc cua no
+    # con xe kia duoc dat ngau nhien vao dung cai hoc do: hai than xe chong
+    # len nhau, bo giai va cham day nhau ra, va ca hai bat dau lan danh gia
+    # bang mot cu va vao vach.
+    taken = set()
     for rid, r in enumerate(sim.robots):
         phase = _pick_phase(rng, mix)
         drift = rng.uniform(0.0, station_drift)
 
+        if phase == "trong-hoc":
+            d = sim.home[rid]
+            if id(d) in taken:
+                phase = "long-nhong"
+            else:
+                taken.add(id(d))
         if phase == "trong-hoc":
             d = sim.home[rid]
             depth = P.DOCK_CAVITY_D - P.BODY_RADIUS - 0.005
@@ -100,11 +110,18 @@ def _place(sim, rng, mix, station_drift):
             # so con lai la hoc cua xe khac hoac hoc moi nhu. Neu lan nao
             # cung dat dung hoc cua no thi bo nao se hoc duoc rang "cu cam
             # la co dien" va se khong bao gio nhin toi tin hieu bat tay.
-            if rng.random() < 0.55:
-                d = sim.home[rid]
+            free = [x for x in docks if id(x) not in taken]
+            if not free:
+                x, y, th = sim.free_pose(rng)
+                sim.place_robot(rid, x, y, th, battery=rng.uniform(0.05, 0.14),
+                                station_drift=drift, rng=rng)
+                continue
+            own = sim.home[rid]
+            if rng.random() < 0.55 and id(own) not in taken:
+                d = own
             else:
-                d = docks[used % len(docks)]
-                used += 1
+                d = free[0]
+            taken.add(id(d))
             # Trong moi pha van co dai kho de: co lan gan nhu xong roi, co
             # lan lech nhieu. Mot pha chi co mot muc kho thi hoac de qua
             # (khong hoc them duoc gi) hoac kho qua (khong ai cham toi).
