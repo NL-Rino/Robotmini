@@ -12,6 +12,17 @@ Nhung thu sau **khong** chay duoc no:
 Con **mot** duong: **DirectML**. No bien DirectX 12 thanh mot may tinh cua
 PyTorch, va HD 620 co DirectX 12.
 
+## Cach nhanh nhat: chay san mot file
+
+O thu muc goc co `cai_dml_windows.bat`. Bam doi vao no. No se:
+
+  1. tim mot ban Python tu 3.12 tro xuong tren may ban;
+  2. neu khong co, in ra dung lenh can go de cai them (va KHONG dong toi
+     ban Python dang co);
+  3. tao `.venv-dml`, cai `torch-directml`, roi chay `check` luon.
+
+Muon lam tay thi doc tiep.
+
 ## Cai dat (Windows)
 
 ### Truoc tien: Python phai la 3.12 tro XUONG
@@ -46,10 +57,28 @@ Doi `-3.12` thanh `-3.11` hay `-3.10` neu may ban co ban do.
 
 ### Chua co ban nao tu 3.12 tro xuong
 
-Tai Python 3.12 o python.org/downloads (chon ban "Windows installer
-64-bit"). Luc cai **tich o "Add python.exe to PATH"** hoac cai binh thuong
-roi dung `py -3.12` nhu tren - ca hai deu duoc, va **khong lam hong ban
-Python 3.13 dang co**: `py` cho phep nhieu ban song song.
+`py -0` chi hien `3.13` thi phai cai them. **Cai them KHONG lam hong ban
+3.13 dang co** - trinh `py` cho nhieu ban Python song song tren cung mot
+may, va `app.py` van chay bang ban cu nhu thuong.
+
+**Cach 1 - winget** (co san tren Windows 10 doi moi):
+
+    winget install Python.Python.3.12
+
+Bao khong nhan ten do thi xem ten dung bang:
+
+    winget search Python.Python
+
+**Cach 2 - tai ve** tu `python.org/downloads`: keo xuong muc "Looking for a
+specific release?", chon mot ban **3.12.x**, tai file *Windows installer
+(64-bit)*, cai binh thuong. Khong bat buoc tich "Add to PATH" - ta goi qua
+`py -3.12`.
+
+Cai xong thi **mo mot cua so cmd MOI** (cua so cu chua thay ban vua cai),
+roi:
+
+    py -0                          (phai thay ca 3.12 va 3.13)
+    py -3.12 -m venv .venv-dml
 
 ### Kiem tra
 

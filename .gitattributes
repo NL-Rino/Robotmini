@@ -1,0 +1,2 @@
+# File .bat phai giu xuong dong kieu Windows, khong thi cmd.exe doc sai.
+*.bat text eol=crlf

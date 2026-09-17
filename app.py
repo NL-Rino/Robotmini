@@ -36,7 +36,14 @@ from sim import params as P                       # noqa: E402
 from sim.fleet import FleetSim                    # noqa: E402
 from sim.world import make_fleet_map              # noqa: E402
 from train.policy import GRUPolicy, PolicyBrain   # noqa: E402
-from turbo import device as TDEV                  # noqa: E402
+# `turbo/` can PyTorch; ban v1 thi khong. Ai chi muon chay ban v1 thi khong
+# phai cai PyTorch, nen cho nay hong thi bo qua chu khong duoc lam chet
+# ca phan mem.
+try:
+    from turbo import device as TDEV           # noqa: E402
+except Exception as _e:                        # PyTorch chua cai
+    TDEV = None
+    _TURBO_WHY = str(_e)
 
 BRAINS = os.path.join(HERE, "brains")
 RUNS = os.path.join(HERE, "runs")
@@ -92,6 +99,14 @@ def load_brain_factory(path):
         if gen:
             desc += f", the he {gen}"
     return (lambda rid: PolicyBrain(pol, rid)), desc
+
+
+def _engines():
+    """Cac bo may chay co the chon. Khong co PyTorch thi chi con ban v1."""
+    if TDEV is not None:
+        return TDEV.engines()
+    return [("tung xe mot - CPU, nhieu tien trinh", "train.train", None,
+             "chua cai PyTorch nen khong co muc chay theo lo")]
 
 
 def button(parent, text, cmd, kind="normal", width=None):
@@ -449,7 +464,7 @@ class TrainScreen(Screen):
 
         # Chay bang gi. Hai bo may chay cho ra cung mot loai bo nao va cung
         # mot khuon file; khac nhau o cach chia viec, va do la tat ca.
-        self.engines = TDEV.engines()
+        self.engines = _engines()
         er = tk.Frame(f, bg=PANEL)
         er.grid(row=100, column=0, columnspan=8, sticky="w", padx=16, pady=(0, 10))
         tk.Label(er, text="Chay bang", bg=PANEL, fg=FG, font=FONT

@@ -82,8 +82,12 @@ va no dung o dau.
 ## Card LIEN (Intel HD 620, UHD, Iris, AMD tich hop)
 
 Khong co CUDA, va `torch.xpu` cung khong nhan (no can Gen12 tro len). Duong
-duy nhat la **DirectML**, va no chay duoc. Cach cai va cach do: xem
-`turbo/docs/INTEL_620.md`.
+duy nhat la **DirectML**. Bam doi vao `cai_dml_windows.bat` o thu muc goc
+la xong; chi tiet o `turbo/docs/INTEL_620.md`.
+
+Mot cho de vap: `torch-directml` chi co goi cho **Python 3.8 den 3.12**.
+Python 3.13 tro len thi pip bao `from versions: none` - do khong phai loi
+mang.
 
 Mot dieu nen biet truoc: card lien **dung chung thanh RAM voi CPU**, ma cho
 nghen cua chuong trinh nay la duong truyen bo nho chu khong phai so phep
