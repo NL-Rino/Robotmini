@@ -426,8 +426,14 @@ class BatchSim:
 
     def fans(self):
         wdt = 2.0 * math.pi / P.N_LIDAR_FANS
-        b = (self.scan_b + 0.5 * wdt) % (2.0 * math.pi)
-        i = (b / wdt).floor().long().clamp(0, P.N_LIDAR_FANS - 1)
+        two_pi = 2.0 * math.pi
+        # Khong dung `%` tren so thuc, va khong `clamp` tren so nguyen: hai
+        # phep do de thieu tren card lien. `scan_b` luon nam trong (-pi, pi]
+        # vi no ra tu atan2, nen cong/tru mot vong la du, khong can chia du.
+        b = self.scan_b + 0.5 * wdt
+        b = torch.where(b < 0.0, b + two_pi, b)
+        b = torch.where(b >= two_pi, b - two_pi, b)
+        i = (b / wdt).floor().clamp(0.0, P.N_LIDAR_FANS - 1.0).long()
         r = torch.where(self.scan_ok, self.scan_r,
                         torch.full_like(self.scan_r, P.LIDAR_MAX))
         return ops.fan_min(i, r, P.N_LIDAR_FANS, P.LIDAR_MAX, self.device)

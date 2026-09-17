@@ -78,9 +78,19 @@ def check(dev, robots=48, quiet=False):
                 p[:, 0] + 0.9 * torch.cos(p[:, 2]),
                 p[:, 1] + 0.9 * torch.sin(p[:, 2]), p[:, 2] + 3.14159,
                 battery=torch.full((s.R,), 0.5).to(dev))
+        _touch(s.x)
+        _sync(dev)
         _ok("dung the gioi va dat xe", f"{s.R} xe")
     except Exception as e:
         _fail("dung the gioi va dat xe", e)
+        return 1
+
+    # Gom tia vao quat khi CHUA CO VONG QUET NAO: day la trang thai xe vua
+    # bat len, va no khac han trang thai sau khi da quet - dung du lieu
+    # khac thi card co the hong o cho khac.
+    _, good = _stage("gom tia vao quat (chua quet lan nao)",
+                     lambda: s.fans(), dev)
+    if not good:
         return 1
 
     try:
@@ -132,35 +142,56 @@ def check(dev, robots=48, quiet=False):
         print("  Khong co phep nao phai nho CPU. Tot.")
 
     print("\n4. Chay mot lan danh gia day du")
+    print("   (moi buoc deu DOI cho card lam xong roi moi bao, de loi no")
+    print("    dung cho gay ra chu khong no o cho sau)")
     from turbo.policy import BatchPolicy as BP
     from turbo.rollout import Rollout
-    ro = bp2 = th2 = None
-    try:
-        ro = Rollout([3], 3, pop, dev, seed=1)
-        _ok("dung lo the gioi", f"{ro.sim.R} xe, {ro.unit} xe moi bo trong so")
-    except Exception as e:
-        _fail("dung lo the gioi", e)
+
+    ro, good = _stage("dung lo the gioi",
+                      lambda: Rollout([3], 3, pop, dev, seed=1), dev)
+    if not good:
         return 1
-    try:
-        ro.reset(11, 0.3)
-        _ok("dat lai xe theo giao trinh")
-    except Exception as e:
-        _fail("dat lai xe theo giao trinh", e)
+    _, good = _stage("dat lai xe theo giao trinh",
+                     lambda: ro.reset(11, 0.3), dev)
+    if not good:
         return 1
-    try:
-        bp2 = BP(16, dev)
-        th2 = (torch.randn(pop, bp2.n_params) * 0.2).to(dev)
-        ro.run(bp2, th2, 1)
-        _ok("mot buoc: bo nao + vat ly + phan thuong")
-    except Exception as e:
-        _fail("mot buoc: bo nao + vat ly + phan thuong", e)
+    _, good = _stage("ban tia mot buoc", lambda: ro.sim.lidar_step(), dev)
+    if not good:
         return 1
-    try:
-        ro.run(bp2, th2, 20)
-        _sync(dev)
-        _ok("hai muoi buoc lien")
-    except Exception as e:
-        _fail("hai muoi buoc lien", e)
+    _, good = _stage("gom tia vao quat", lambda: ro.sim.fans(), dev)
+    if not good:
+        return 1
+    _, good = _stage("do vuc", lambda: ro.sim.cliff(), dev)
+    if not good:
+        return 1
+    _, good = _stage("tiep dien", lambda: ro.sim.contact(), dev)
+    if not good:
+        return 1
+    _, good = _stage("hong ngoai", lambda: ro.sim.ir_dock(), dev)
+    if not good:
+        return 1
+    obs, good = _stage("dung 48 dau vao",
+                       lambda: PC.build(ro.sim, ro.docks), dev)
+    if not good:
+        return 1
+    bp2 = BP(16, dev)
+    th2 = (torch.randn(pop, bp2.n_params) * 0.2).to(dev)
+    st = bp2.new_state(pop, ro.unit)
+    y, good = _stage("chay bo nao",
+                     lambda: bp2.step(bp2.unpack(th2),
+                                      obs.view(pop, ro.unit, -1), st), dev)
+    if not good:
+        return 1
+    ev, good = _stage("mot buoc vat ly",
+                      lambda: ro.sim.step(y[0].reshape(ro.sim.R, -1)), dev)
+    if not good:
+        return 1
+    _, good = _stage("cham diem", lambda: ro.rw.step(ev), dev)
+    if not good:
+        return 1
+    _, good = _stage("hai muoi buoc lien",
+                     lambda: ro.run(bp2, th2, 20), dev)
+    if not good:
         return 1
 
     print("\n5. Nhanh cham the nao")
@@ -213,6 +244,32 @@ def _fallbacks(s, dev, bp, pr, h, v):
         if m and m.group(1) not in names:
             names.append(m.group(1))
     return names
+
+
+def _touch(x):
+    """Doc mot so ve CPU. Card chay bat dong bo: khong doc thi loi cua phep
+    vua roi se no o phep sau do, va ta di sua nham cho."""
+    try:
+        if torch.is_tensor(x) and x.numel():
+            float(x.reshape(-1)[:1].cpu().sum())
+        elif isinstance(x, (tuple, list)):
+            for y in x:
+                _touch(y)
+    except Exception:
+        raise
+
+
+def _stage(name, fn, dev, note=""):
+    """Chay mot buoc, DOI cho may lam xong, roi moi bao duoc hay khong."""
+    try:
+        out = fn()
+        _touch(out)
+        _sync(dev)
+    except Exception as e:
+        _fail(name, e)
+        return None, False
+    _ok(name, note)
+    return out, True
 
 
 def _sync(dev):
