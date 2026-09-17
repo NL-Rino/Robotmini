@@ -33,10 +33,24 @@ R_FLAT = -150.0
 R_ALIVE = 0.02
 R_BUMP = -1.5
 R_CLIFF = -0.8
+R_CLIFF_CAP = -60.0       # tran. Do duoc o ban v1: xe ket canh cai ho, cam
+                          # bien vuc keu suot 300 giay -> -1.713 diem, tuc la
+                          # dung canh ho dat hon lao xuong ho (-150).
 R_CHARGE = 150.0
 R_LATCH = 30.0
+R_AWAY_DIST = 1.5         # phai roi hoc xa chung nay thi lan cam sau moi
+                          # duoc tra tien. Khong co no thi xe lac ra lac vao
+                          # an +30 moi lan - do duoc 42 lan mot tap o ban v1.
+R_FULL_ENOUGH = 0.97
+R_LOITER = -0.10          # moi buoc con nam trong hoc khi pin da day
+R_LOITER_CAP = -80.0
 R_WRONG = -4.0
 R_HOME = 3.0
+# Trong long hoc CHI duoc lui vao va di thang ra. Long hoc 31 cm ma than xe
+# 30 cm: quay nguoi trong do la co xat hai vach va giat chan tiep dien.
+R_SPIN_DOCK = -2.5
+R_SPIN_FREE = 0.35        # phan toc do quay toi da duoc quay tu do de con
+                          # nan huong luc dang lui vao
 
 
 def phase_mix(progress):
@@ -112,6 +126,10 @@ class FleetEnv3D:
         self.ep_charged = z(self.n)
         self.ep_wrong = z(self.n)
         self.ep_ret = z(self.n)
+        self.ep_budget = z(self.n)      # han muc nang luong cua lan vao hoc nay
+        self.ep_away = z(self.n)        # da roi hoc xa nhat bao nhieu
+        self.ep_loiter = z(self.n)
+        self.ep_cliff = z(self.n)
         self.reset_all()
 
     # ------------------------------------------------------------------ dat xe
@@ -226,7 +244,41 @@ class FleetEnv3D:
         self.ep_charged[idx] = 0.0
         self.ep_wrong[idx] = 0.0
         self.ep_ret[idx] = 0.0
+        self.ep_loiter[idx] = 0.0
+        self.ep_cliff[idx] = 0.0
+        # Xe dat NGOAI hoc thi coi nhu da di xa roi - no dang o ngoai that.
+        # Chi xe dat san trong hoc va dang co dien moi phai di lam mot vong
+        # roi ve thi lan sac moi duoc tra tien.
+        rear_x = self.x[idx] - P.BODY_RADIUS * torch.cos(self.th[idx])
+        rear_y = self.y[idx] - P.BODY_RADIUS * torch.sin(self.th[idx])
+        lx, ly = self._to_dock_local(rear_x, rear_y, hp)
+        docked = (lx <= -P.DOCK_CAVITY_D + P.CONTACT_LONG_TOL) & \
+                 (ly.abs() <= P.CONTACT_LAT_TOL)
+        self.ep_away[idx] = torch.where(docked, torch.zeros_like(rear_x),
+                                        torch.full_like(rear_x, R_AWAY_DIST))
+        self.ep_budget[idx] = torch.where(
+            docked, torch.zeros_like(rear_x),
+            torch.clamp(1.0 - self.batt[idx], min=0.0))
         self.prev_home_d[idx] = self._home_dist(idx)
+
+    @staticmethod
+    def _to_dock_local(px, py, pose):
+        """Doi mot diem sang he quy chieu hoc: +x la truc ra, goc o mieng."""
+        dx = px - pose[:, 0]
+        dy = py - pose[:, 1]
+        ca, sa = torch.cos(-pose[:, 2]), torch.sin(-pose[:, 2])
+        return dx * ca - dy * sa, dx * sa + dy * ca
+
+    def _in_cavity(self):
+        """Tam xe co dang nam trong long mot cai hoc nao khong."""
+        pose = self.sc["dock_pose"]
+        dx = self.x[:, None] - pose[..., 0]
+        dy = self.y[:, None] - pose[..., 1]
+        ca, sa = torch.cos(-pose[..., 2]), torch.sin(-pose[..., 2])
+        lx = dx * ca - dy * sa
+        ly = dx * sa + dy * ca
+        return ((lx <= 0.02) & (lx >= -P.DOCK_CAVITY_D - 0.02)
+                & (ly.abs() <= 0.5 * P.DOCK_CAVITY_W + 0.02)).any(dim=1)
 
     def _home_dist(self, idx=None):
         """Khoang cach toi DIEM DUNG TRUOC MIENG hoc cua no (khong phai toi hoc).
@@ -454,11 +506,53 @@ class FleetEnv3D:
         wrong = in_slot & ~id_ok & ~was_slot
         cliff_l, cliff_r = self._cliff()
 
+        # Da roi hoc xa nhat bao nhieu ke tu lan duoc tra tien truoc.
+        pose = self.sc["dock_pose"]
+        hp_now = pose.gather(1, self.home[:, None, None].expand(-1, 1, 3)
+                             ).squeeze(1)
+        away = torch.hypot(self.x - hp_now[:, 0], self.y - hp_now[:, 1])
+        self.ep_away = torch.maximum(self.ep_away, away)
+
+        # Vua cam dung hoc VA da thuc su di lam mot vong -> tra tien, va mo
+        # han muc nang luong cho lan nay.
+        paid_latch = just_charge & (self.ep_away >= R_AWAY_DIST)
+        self.ep_away = torch.where(paid_latch, torch.zeros_like(self.ep_away),
+                                   self.ep_away)
+        self.ep_budget = torch.where(
+            paid_latch, torch.clamp(1.0 - self.batt, min=0.0), self.ep_budget)
+
+        # Tra tien nang luong trong han muc. Het han muc thi xa roi nap lai
+        # ngay trong hoc cung khong duoc gi.
+        pay = torch.minimum(d_batt, torch.clamp(self.ep_budget, min=0.0))
+        self.ep_budget = torch.clamp(self.ep_budget - pay, min=0.0)
+
+        # Pin day ma van nam trong hoc thi bat dau lo von.
+        loiter = torch.where(self.charging & (self.batt > R_FULL_ENOUGH),
+                             torch.full_like(self.batt, R_LOITER),
+                             torch.zeros_like(self.batt))
+        loiter = torch.maximum(loiter, R_LOITER_CAP - self.ep_loiter)
+        loiter = torch.minimum(loiter, torch.zeros_like(loiter))
+        self.ep_loiter = self.ep_loiter + loiter
+
+        cliff_pen = torch.where(cliff_l | cliff_r,
+                                torch.full_like(self.batt, R_CLIFF),
+                                torch.zeros_like(self.batt))
+        cliff_pen = torch.maximum(cliff_pen, R_CLIFF_CAP - self.ep_cliff)
+        cliff_pen = torch.minimum(cliff_pen, torch.zeros_like(cliff_pen))
+        self.ep_cliff = self.ep_cliff + cliff_pen
+
+        # Quay nguoi trong long hoc.
+        excess = torch.clamp(w.abs() / P.W_MAX - R_SPIN_FREE, min=0.0)
+        spin_pen = torch.where(self._in_cavity(), R_SPIN_DOCK * excess,
+                               torch.zeros_like(excess))
+
         rew = torch.full_like(self.x, R_ALIVE)
         rew = rew + R_BUMP * new_bump.float()
-        rew = rew + R_CLIFF * (cliff_l | cliff_r).float()
-        rew = rew + R_CHARGE * d_batt
-        rew = rew + R_LATCH * just_charge.float()
+        rew = rew + cliff_pen
+        rew = rew + R_CHARGE * pay
+        rew = rew + loiter
+        rew = rew + spin_pen
+        rew = rew + R_LATCH * paid_latch.float()
         rew = rew + R_WRONG * wrong.float()
         rew = rew + R_FALL * just_fell.float()
         rew = rew + R_FLAT * just_flat.float()

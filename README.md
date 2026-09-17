@@ -39,14 +39,15 @@ Dòng lệnh, nếu cần:
 ```
 python tests/test_sim.py                    # 32/32  mô phỏng
 python tests/test_link.py                   #  7/7   xe <-> wifi <-> não
-python tests/test_train.py                  # 20/20  huấn luyện
+python tests/test_train.py                  # 21/21  huấn luyện
+python tests/test_reward.py                 # 11/11  chống ăn gian trong sạc
 python -m tools.run_fleet                   # chạy MÃI, Ctrl-C để ngắt não
 python -m tools.run_fleet --view 10 --realtime
 python -m train.train --out runs/thu1 --jobs 4
 python -m tools.measure all                 # đo lại các con số trong docs
 ```
 
-Đo được: đèn báo sáng thì **67/100** xe tự về được đúng hộc của mình, với
+Đo được: đèn báo sáng thì **68/100** xe tự về được đúng hộc của mình, với
 **0,4** lần cắm nhầm hộc mỗi lượt — chính là cơ chế mã dock đang chạy.
 
 Não chạy ở tiến trình khác (như khi chạy thật: não trên laptop, xe qua wifi):
@@ -91,7 +92,8 @@ train/
   train.py         vòng lặp, file trạng thái, file STOP
 tools/run_fleet.py  trình chạy + bản đồ ASCII
 tools/measure.py    đo lại: tỉ lệ về trạm, độ chính xác bộ dò, tốc độ, nhiễu
-tests/            38 bài (31 mô phỏng + 7 đường truyền)
+tests/            71 bài (32 mô phỏng + 7 đường truyền + 21 huấn
+                  luyện + 11 chống ăn gian trong trạm sạc)
 docs/SIM.md         thiết kế, 48 đầu vào, và các con số kèm lý do
 ```
 

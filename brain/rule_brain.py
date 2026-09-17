@@ -135,8 +135,8 @@ class _DockTrack:
 class RuleBrain:
     """Mot bo luat cho MOT xe. Tu giu trang thai rieng."""
 
-    STATES = ("long-nhong", "ve-tram", "tim-hoc", "ap-mieng", "chinh-truc",
-              "lui-vao", "hoi-ma", "dang-sac", "rut-ra")
+    STATES = ("long-nhong", "tranh-vuc", "ve-tram", "tim-hoc", "ap-mieng",
+              "chinh-truc", "lui-vao", "hoi-ma", "dang-sac", "rut-ra")
 
     COMMIT_SCORE = 0.55     # duoi nguong nay thi phan lon la goc tuong
 
@@ -151,6 +151,7 @@ class RuleBrain:
         self.wander_until = 0.0
         self.tries = 0
         self.orbit_dir = 1
+        self.escape_dir = 1.0
         self.track = _DockTrack()
         # Tu do duong bang chinh hai so v va w trong dau vao. Dung de nho
         # xem vua cam nham cai hoc nao, khoi thu lai dung no.
@@ -188,10 +189,17 @@ class RuleBrain:
         cliff_l = float(obs[PC.I_CLIFF]) > 0.5
         cliff_r = float(obs[PC.I_CLIFF + 1]) > 0.5
 
-        # Vuc thi lui, khong ban gi khac. Phan xa, khong phai ke hoach.
-        if cliff_l or cliff_r:
-            self._go("long-nhong", t)
-            return _drive(-0.35, (-1.0 if cliff_l else 1.0) * 2.0)
+        # Vuc thi thoat ra, va thoat CHO XONG.
+        #
+        # Truoc day cho nay chi la mot phan xa moi buoc: lui mot chut roi
+        # quay mot chut. Ket o goc giua buc tuong va cai ho thi lui xong lai
+        # tien vao, cam bien lai keu, lap lai mai. Do duoc: ket 300 giay lien.
+        # Phai la mot TRANG THAI co thoi luong, va trong luc quay thi khong
+        # nghe cam bien vuc nua - dang quay tai cho thi no van keu la dung.
+        if (cliff_l or cliff_r) and self.state != "tranh-vuc":
+            self.escape_dir = -1.0 if cliff_l else 1.0
+            self.track.drop()
+            self._go("tranh-vuc", t)
 
         if charging:
             self._go("dang-sac", t)
@@ -292,6 +300,18 @@ class RuleBrain:
         self._go("ap-mieng", t)
 
     # ------------------------------------------------------------------ cac trang thai
+    def _st_tranh_vuc(self, obs, t, dt, in_slot, id_ok, soc):
+        """Lui han ra roi quay han di, chu khong nhich tung ti."""
+        span = self._in_state(t)
+        if span < 0.8:
+            return _drive(-0.40, 0.0)
+        if span < 2.2:
+            return _drive(0.0, 2.2 * self.escape_dir)
+        low = (float(obs[PC.I_BATTERY + 1]) > 0.0
+               or float(obs[PC.I_BATTERY]) < P.BATT_LOW)
+        self._go("ve-tram" if low else "long-nhong", t)
+        return _drive(0.30, 0.0)
+
     def _st_long_nhong(self, obs, t, dt, in_slot, id_ok, soc, chase_call=True):
         a = self._avoid(obs, 0.45)
         if a is not None:

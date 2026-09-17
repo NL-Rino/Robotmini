@@ -344,5 +344,105 @@ class TestCuda(unittest.TestCase):
         self.assertLess(float((i1 - i2.cpu()).abs().mean()), 0.02)
 
 
+
+class TestKhongAnGianDuocTrongSac(unittest.TestCase):
+    """Cung bo lo hong da bit o ban v1, kiem lai tren ban 3D theo lo."""
+
+    def _docked(self, batt=0.9, n=4):
+        e = FleetEnv3D(n_envs=n, device=CPU, seed=3)
+        pose = e.sc["dock_pose"]
+        hp = pose.gather(1, e.home[:, None, None].expand(-1, 1, 3)).squeeze(1)
+        dep = P.DOCK_CAVITY_D - P.BODY_RADIUS - 0.005
+        e.x = hp[:, 0] - dep * torch.cos(hp[:, 2])
+        e.y = hp[:, 1] - dep * torch.sin(hp[:, 2])
+        e.th = hp[:, 2].clone()
+        e.batt[:] = batt
+        e.ep_away[:] = 0.0
+        e.ep_budget[:] = 0.0
+        e.ep_ret[:] = 0.0
+        e.ep_loiter[:] = 0.0
+        return e
+
+    def test_quay_trong_long_hoc_bi_phat(self):
+        e = self._docked()
+        self.assertTrue(bool(e._in_cavity().all()))
+        a = torch.zeros(4, 3)
+        a[:, 0] = 0.8
+        a[:, 1] = -0.8
+        for _ in range(120):
+            e.step(a)
+        self.assertLess(float(e.ep_ret.mean()), -20.0)
+
+    def test_ngoi_yen_khi_pin_day_thi_lo_dan(self):
+        e = self._docked(batt=0.99)
+        for _ in range(200):
+            e.step(torch.zeros(4, 3))
+        self.assertLess(float(e.ep_loiter.mean()), -5.0)
+        self.assertLess(float(e.ep_ret.mean()), 0.0)
+
+    def test_chua_di_lam_thi_sac_khong_duoc_tra_tien(self):
+        e = self._docked(batt=0.4)
+        # sac day tu 0,4 mat 36 giay = 720 buoc
+        for _ in range(800):
+            e.step(torch.zeros(4, 3))
+        self.assertGreater(float(e.batt.mean()), 0.9, "van phai sac day that")
+        self.assertLess(float(e.ep_ret.mean()), 25.0,
+                        "sac ma chua di lam thi khong duoc tra tien")
+
+    def test_moi_khoan_phat_cong_don_deu_nhe_hon_cai_chet(self):
+        from v2.env import R_CLIFF_CAP, R_FALL, R_FLAT, R_LOITER_CAP
+        self.assertGreater(R_CLIFF_CAP, R_FALL)
+        self.assertGreater(R_LOITER_CAP, R_FLAT)
+        self.assertGreater(R_CLIFF_CAP + R_LOITER_CAP, R_FALL)
+
+    def test_nan_huong_nhe_luc_lui_vao_thi_khong_bi_phat(self):
+        from v2.env import R_SPIN_FREE
+        e = self._docked()
+        a = torch.zeros(4, 3)
+        a[:, 0] = -0.16
+        a[:, 1] = -0.10
+        e.step(a)
+        w = (e.vr - e.vl) / P.WHEEL_BASE
+        self.assertLess(float(w.abs().max()) / P.W_MAX, R_SPIN_FREE,
+                        "nan huong nhe luc lui vao khong duoc tinh la quay")
+
+class TestLaiXeVaoThat(unittest.TestCase):
+    """Lai xe vao hoc BANG VAT LY THAT, khong dat thang vao toa do.
+
+    Bai kiem thu dat xe thang vao toa do roi goi ham kiem tiep diem thi
+    khong chay qua va cham, nen no van xanh ca khi hinh hoc cai hoc sai. Da
+    sai that mot lan: thanh sau bi day vao trong 11 cm, long hoc chi con sau
+    20 cm, va cam sac tro thanh bat kha thi - ma ca bo kiem thu van xanh.
+    """
+
+    def test_lui_thang_vao_thi_cam_duoc_va_co_dien(self):
+        e = FleetEnv3D(n_envs=5, device=CPU, seed=3)
+        pose = e.sc["dock_pose"]
+        hp = pose.gather(1, e.home[:, None, None].expand(-1, 1, 3)).squeeze(1)
+        e.x = hp[:, 0] + 0.42 * torch.cos(hp[:, 2])
+        e.y = hp[:, 1] + 0.42 * torch.sin(hp[:, 2])
+        e.th = hp[:, 2].clone()
+        e.batt[:] = 0.5
+        e.in_slot[:] = False
+        a = torch.zeros(5, 3)
+        a[:, 0] = -0.25
+        a[:, 1] = -0.25
+        for _ in range(140):
+            e.step(a)
+        self.assertGreaterEqual(int(e.in_slot.sum()), 4, "lui thang vao ma khong cam duoc")
+        self.assertGreaterEqual(int(e.charging.sum()), 4, "cam roi ma khong ra dien")
+
+    def test_long_hoc_sau_dung_bang_thong_so(self):
+        e = FleetEnv3D(n_envs=1, device=CPU, seed=3)
+        pose = e.sc["dock_pose"][0, 0]
+        # ban tia doc truc tu mieng hoc vao trong: phai cham thanh sau o
+        # dung do sau long hoc
+        o = torch.tensor([[[float(pose[0]), float(pose[1]), 0.15]]])
+        d = torch.tensor([[[-math.cos(float(pose[2])),
+                            -math.sin(float(pose[2])), 0.0]]])
+        t, _a, _n, _k = RT.trace(o, d, e.sc, want_floor=False)
+        self.assertAlmostEqual(float(t[0, 0]), P.DOCK_CAVITY_D, delta=0.02)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

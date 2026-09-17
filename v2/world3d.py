@@ -72,9 +72,12 @@ def _add_dock(b, x, y, theta, code, powered=True):
         b.add_box(x + lx * c - ly * s, y + lx * s + ly * c, hz,
                   hx, hy, hz, theta + extra_yaw, **kw)
 
-    # thanh sau (day hoc)
-    put(-(outer + depth) * 0.5 + 0.5 * depth - 0.5 * (outer - depth) + 0.0, 0.0,
-        0.5 * (outer - depth), w2, col=COL_DOCK)
+    # Thanh sau: mat trong o x = -depth, mat ngoai o x = -outer.
+    # Viet sai cho nay mot lan roi: hop bi day vao trong long hoc 11 cm, long
+    # hoc chi con sau 20 cm thay vi 31 cm, va CAM SAC THANH BAT KHA THI. Bai
+    # kiem thu cu dat xe thang vao toa do nen khong chay qua vat ly, va khong
+    # bat duoc. Gio co bai lai xe vao that.
+    put(-(outer + depth) * 0.5, 0.0, 0.5 * (outer - depth), w2, col=COL_DOCK)
     # hai vach ben
     for sgn in (1, -1):
         put(-0.5 * outer, sgn * 0.5 * (w2 + cav2), 0.5 * outer,

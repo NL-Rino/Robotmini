@@ -188,14 +188,18 @@ Chạy lại bằng `python -m tools.measure all`.
 
 | phép đo | kết quả |
 |---|---|
-| đèn báo sáng → xe **tự về được hộc của mình** | **67/100** (5 mặt bằng × 4 lượt × 5 xe) |
+| đèn báo sáng → xe **tự về được hộc của mình** | **68/100** (5 mặt bằng × 4 lượt × 5 xe) |
 | số lần cắm nhầm hộc của xe khác mỗi lượt về | **0,4** |
 | tốc độ | ~880 µs/bước/xe, nhanh hơn thời gian thật **11 lần** với 5 xe |
 
 Con số 0,4 lần cắm nhầm mỗi lượt chính là cơ chế bạn yêu cầu đang chạy: năm
 cái hộc giống hệt nhau, odometry đã trôi, nên xe **phải** cắm thử mới biết.
-33 lượt còn lại là xe hết pin trước khi tìm ra hộc của nó — đó là bài toán
+32 lượt còn lại là xe hết pin trước khi tìm ra hộc của nó — đó là bài toán
 thật sau khi bỏ lớp cưỡng ép, không phải lỗi mô phỏng.
+
+Con số này **không đổi** sau khi bịt bốn lỗ hổng trong trạm sạc và viết lại
+phản xạ tránh vực (`docs/TRAIN.md` mục 3.1): 67 trước, 68 sau — cùng một
+khoảng nhiễu. Nhưng cái bẫy kẹt-cạnh-hố 300 giây thì hết.
 
 Để so sánh: bộ luật viết tay của bản cũ đạt 0,414 lần sạc mỗi tập với **một**
 xe và **một** hộc, không có hộc nào giống nó để cắm nhầm.

@@ -133,3 +133,9 @@ thì bộ đệm phình gấp bốn lần, mà bộ đệm là thứ ăn VRAM nh
   vẫn ra kết quả, chỉ là chậm hơn đáng lẽ — loại lỗi không ai báo gì.
 - **Vị trí thử camera nằm trong lòng vật cản**, ra ảnh tối thui, suýt nữa
   tưởng bộ dựng hình hỏng.
+- **Thành sau cái hộc đặt sai chỗ**, thò vào lòng hộc 11 cm: lòng hộc chỉ
+  còn sâu 20 cm thay vì 31 cm, và **cắm sạc trở thành bất khả thi** — nhưng
+  cả bộ kiểm thử vẫn xanh, vì mọi bài kiểm tra tiếp điểm đều đặt xe thẳng
+  vào toạ độ rồi gọi hàm, không chạy qua va chạm. Giờ có một bài **lái xe
+  lùi vào bằng vật lý thật**. Bài kiểm thử đi tắt qua vật lý thì không thể
+  bắt được lỗi hình học.

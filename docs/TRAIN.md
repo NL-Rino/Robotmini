@@ -148,14 +148,14 @@ lúc nào cũng đúng thì bộ não sẽ học cách tin vào nó, rồi ra đ
 | hết pin nằm đường | −150 |
 | sống, mỗi bước | +0,02 |
 | va chạm, mỗi lần | −1,5 |
-| cảm biến vực kêu, mỗi bước | −0,8 |
-| nạp được điện | +150 × phần pin nạp |
-| vừa cắm đúng hộc | +30 |
-| cắm nhầm hộc người khác | **−4** |
+| cảm biến vực kêu, mỗi bước | −0,8 **(trần −60)** |
+| nạp được điện | +150 × phần pin nạp, **trong hạn mức của lần vào hộc đó** |
+| vừa cắm đúng hộc | +30, **chỉ khi đã rời hộc xa hơn 1,5 m** |
+| pin đầy mà vẫn nằm trong hộc | −0,10 mỗi bước **(trần −80)** |
+| **quay người trong lòng hộc** | **−2,5 × phần vượt quá 35% tốc độ quay tối đa** |
+| cắm nhầm hộc người khác | −4 |
 | tới được đèn gọi | +25 |
 | lại gần điểm đứng trước miệng hộc (chỉ khi đèn báo sáng) | +3 × mét |
-
-Ba điều đáng nói:
 
 **Hai cái chết cùng giá.** Lỗi (g) rồi (h) của bản cũ: phạt rơi −40 mà đi
 2 m về trạm được +28 thì xe học cách lao về rồi rơi; sửa xong thì nó học
@@ -171,11 +171,49 @@ bao giờ sạc được.
 Dẫn thẳng tới hộc thì xe bị hút vào sườn hộc — chỗ gần nhất nhưng là ngõ
 cụt, không nhìn thấu lòng hộc mà cũng không bắt được đèn hồng ngoại.
 
-Không có số hạng nào thưởng cho việc lùi, cho việc quay đầu, hay cho việc
-hỏi mã hộc. Ba việc đó để bộ não tự tìm ra — đúng như yêu cầu "cái này
-không dạy". Phần thưởng nói *nên ở đâu*, chưa bao giờ nói *phải làm gì*.
+### 3.1 Bốn hàng rào chống ăn gian trong trạm sạc
 
----
+Bản đầu không có bốn hàng rào dưới đây, và bộ não tìm ra ngay. Đo được trên
+cùng một đoạn 60 giây:
+
+| xe làm gì | điểm **trước** | điểm **sau** |
+|---|---:|---:|
+| ngồi yên trong sạc | 121 | **−22** |
+| quay tít tại chỗ trong sạc | **994** | **−1.322** |
+| lắc ra lắc vào để ăn thưởng cắm | **1.300** | **24** |
+| đi làm việc thật (ra ngoài, tới đèn gọi, về sạc) | ~300 | **403** |
+
+Nó không hỏng. Nó đang giải đúng cái bài toán ta viết ra — chỉ là ta viết
+nhầm. Bốn chỗ sửa:
+
+1. **Thưởng cắm phải đi kèm một chuyến đi.** +30 chỉ trả khi xe đã rời hộc
+   xa hơn 1,5 m kể từ lần được trả trước. Không có điều kiện này thì xe lắc
+   ra lắc vào ăn +30 mỗi lần — đo được 42 lần trong một tập.
+2. **Hạn mức năng lượng cho mỗi lần vào hộc**, đặt đúng lúc vừa cắm và bằng
+   phần pin còn thiếu. Hết hạn mức thì xả pin rồi nạp lại ngay trong hộc
+   cũng không được gì. Không có nó thì xe quay tại chỗ cho hao pin rồi để
+   sạc bù, mỗi vòng ăn thêm một khoản.
+3. **Pin đầy mà vẫn nằm trong hộc thì bắt đầu lỗ vốn** (−0,10 mỗi bước).
+   Đây là câu trả lời trực tiếp cho "nó cứ ngồi yên trong sạc": ngồi yên
+   không còn miễn phí nữa.
+4. **Quay người trong lòng hộc bị phạt nặng.** Lòng hộc rộng 31 cm mà thân
+   xe 30 cm — quay trong đó là cọ xát hai vách và giật chân tiếp điện. Trạm
+   sạc chỉ cho **lùi vào rồi đi thẳng ra**; muốn xoay thì ra khỏi hộc đã.
+   Vẫn chừa 35% tốc độ quay tối đa để còn nắn hướng lúc đang lùi vào — phạt
+   cả cái đó thì không xe nào cắm được vào hộc nữa.
+
+### 3.2 Mọi khoản phạt cộng dồn đều phải NHẸ HƠN cái chết
+
+Đây là cùng cái bẫy (h), chỉ khác dấu, và tôi đã vấp lại nó ngay trong lần
+sửa này.
+
+Phạt cảnh vực −0,8 mỗi bước, không có trần. Một con xe kẹt ở góc giữa bức
+tường và cái hố, cảm biến vực kêu suốt 300 giây → **−1.713 điểm**. Tức là
+**đứng cạnh hố đắt hơn lao xuống hố** (−150). Bộ não sẽ học cách nhảy xuống
+cho xong.
+
+Nên cả phạt cảnh vực lẫn phạt nằm lì đều có trần, và có một bài kiểm thử
+canh riêng việc tổng hai cái trần vẫn nhẹ hơn −150.
 
 ## 4. Cấu hình cho máy của bạn
 
@@ -313,6 +351,17 @@ Nút *Chạy tiếp* trong phần mềm luôn dùng `state.npz`.
 Cách làm việc: muốn biết A hay B gây lỗi thì **tắt hẳn B rồi đo lại**, đừng
 ngồi suy luận. Và nếu phép đo ra con số đẹp bất ngờ thì đo lại với nhiều
 mẫu hơn trước khi tin nó.
+- **Bốn lỗ hổng trong trạm sạc** (mục 3.1). Cái đắt nhất không phải bản thân
+  lỗ hổng mà là: bộ não nuôi ra trông *có vẻ* hoạt động — nó về được tới hộc,
+  nó cắm được — nên nhìn qua tưởng ổn. Chỉ khi ngồi xem lâu mới thấy nó không
+  bao giờ đi ra nữa.
+- **Phạt cộng dồn không có trần** (mục 3.2). Vấp lại đúng cái bẫy (h) ngay
+  trong lúc đang sửa một cái bẫy khác.
+- **Phản xạ tránh vực viết theo từng bước thay vì theo trạng thái.** Lùi một
+  chút rồi quay một chút; kẹt ở góc giữa tường và hố thì lùi xong lại tiến
+  vào, cảm biến lại kêu, lặp 300 giây liền. Phải là một trạng thái có thời
+  lượng, và trong lúc quay thì không nghe cảm biến vực nữa — đang quay tại
+  chỗ thì nó vẫn kêu là đúng.
 
 ## 8. Những thứ đã cân nhắc rồi bỏ
 
