@@ -151,11 +151,15 @@ class TestTrainLoop(unittest.TestCase):
             self.assertTrue(os.path.exists(st))
             d = np.load(st, allow_pickle=True)
             self.assertEqual(int(d["gen"]), 2)
-            # file phai mo duoc bang ban v1 - do la diem cua ca viec nay
+            # Bo nao nuoi bang GPU phai lai duoc con xe trong MO PHONG BAN
+            # V1 - va qua do la lai duoc con robot that. Day la dieu duy
+            # nhat khien ca viec nay co nghia.
             pol, meta = GRUPolicy.load(os.path.join(out, "best.npz"))
             self.assertEqual(pol.n_h, 12)
-            y, _h = pol.step(np.zeros(48), pol.new_state())
-            self.assertEqual(y.shape, (2,))
+            from train.rollout import rollout
+            r = rollout(pol, 90001, steps=60, n_robots=3, progress=1.0)
+            self.assertEqual(r.steps, 60)
+            self.assertTrue(np.isfinite(r.score), "diem khong phai so")
 
             train(out=out, hidden=12, pop=8, maps=1, robots=3, steps=60,
                   gens=2, eval_every=2, resume=out, device=DEV, quiet=True)

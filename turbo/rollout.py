@@ -169,6 +169,7 @@ class Rollout:
         self.sim.t = 0.0
         self.sim.beacon_off.zero_()
         self.sim._cursor = 0.0
+        self.sim._rev = 0
         self.sim.place(torch.arange(self.sim.R, device=self.device),
                        t(xs), t(ys), t(ths), battery=t(batts), station=st)
         # Trang thai tiep dien phai dung NGAY tu buoc dau: xe dat san trong

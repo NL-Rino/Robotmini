@@ -187,7 +187,12 @@ class BatchSim:
                                        generator=self.gen) * 0.12 * drift),
                                   dim=-1)
         self.station[idx] = station
+        # Dat lai xe la dat lai ca LiDAR: xe vua bat len thi chua thay gi.
+        # Khong xoa thi vai buoc dau tien xe con nhin bang vong quet cua lan
+        # danh gia TRUOC - mot can phong khac han.
         self.lok[idx] = False
+        self.scan_ok[idx] = False
+        self.scan_r[idx] = P.LIDAR_MAX
 
     # ------------------------------------------------------------------ vat ly
     def _circles(self):
