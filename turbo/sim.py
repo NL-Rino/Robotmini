@@ -20,23 +20,43 @@ from sim import params as P
 N_LIDAR = 500          # diem moi vong, giong `sim/lidar.py`
 
 
+# Mot lan ban tia dung (R, K, S) so trung gian: 1.152 xe x 60 tia x 52 doan
+# la 3,6 trieu o cho MOI bien tam - va co gan chuc bien tam. Tren CPU thi
+# cai do khong lot noi vao bo nho dem, va phep tinh bi nghen o duong truyen
+# bo nho chu khong phai o so hoc. Cat theo doan thanh tung manh nho roi giu
+# mot cai nho dan la re hon 1,6 lan tren CPU; tren GPU thi khong khac may.
+RAY_TILE = 2 << 20
+
+
 def raycast(ox, oy, ang, seg, seg_e, rmax):
     """Ban tia. ox,oy: (R,)  ang: (R,K)  seg: (R,S,4) -> (R,K)."""
     dx = torch.cos(ang)[:, :, None]
     dy = torch.sin(ang)[:, :, None]
-    aox = (seg[..., 0] - ox[:, None])[:, None, :]
-    aoy = (seg[..., 1] - oy[:, None])[:, None, :]
-    ex = seg_e[..., 0][:, None, :]
-    ey = seg_e[..., 1][:, None, :]
+    n_seg = seg.shape[1]
+    step = max(1, min(n_seg, RAY_TILE // max(1, ang.numel())))
+    best = torch.full(ang.shape, float("inf"), device=ang.device,
+                      dtype=ang.dtype)
+    for i in range(0, n_seg, step):
+        sl = slice(i, i + step)
+        aox = (seg[:, sl, 0] - ox[:, None])[:, None, :]
+        aoy = (seg[:, sl, 1] - oy[:, None])[:, None, :]
+        ex = seg_e[:, sl, 0][:, None, :]
+        ey = seg_e[:, sl, 1][:, None, :]
 
-    den = dx * ey - dy * ex
-    bad = den.abs() < 1e-9
-    safe = torch.where(bad, torch.full_like(den, 1e-9), den)
-    u = (aox * dy - aoy * dx) / safe
-    t = (aox * ey - aoy * ex) / safe
-    ok = ~bad & (u >= 0.0) & (u <= 1.0) & (t > 1e-6)
-    t = torch.where(ok, t, torch.full_like(t, float("inf")))
-    return torch.clamp(t.min(dim=2).values, max=rmax)
+        den = dx * ey - dy * ex
+        nu = aox * dy - aoy * dx
+        nt = aox * ey - aoy * ex
+        # `u` chi dung de kiem 0 <= u <= 1, khong can gia tri. Mot phep chia
+        # tren mang 3,6 trieu o dat hon ca chuc phep so sanh, nen kiem dau
+        # va do lon thay vi chia: u trong [0,1] <=> nu cung dau den va
+        # |nu| <= |den|. Bo duoc mot trong hai phep chia cua moi tia.
+        ad = den.abs()
+        ok = (ad >= 1e-9) & (nu * den >= 0.0) & (nu.abs() <= ad) \
+            & (nt * den > 0.0)
+        safe = torch.where(ok, den, torch.ones_like(den))
+        t = torch.where(ok, nt / safe, torch.full_like(nt, float("inf")))
+        best = torch.minimum(best, t.min(dim=2).values)
+    return torch.clamp(best, max=rmax)
 
 
 def raycast_circles(ox, oy, ang, circ, rmax):
@@ -65,11 +85,14 @@ def wrap(a):
 class BatchSim:
     """Vong lap the gioi theo lo. Mot chi so = mot xe."""
 
-    def __init__(self, world, device, seed=0, dt=P.DT):
+    def __init__(self, world, device, seed=0, dt=P.DT, copies=1):
         self.w = world
         self.device = device
         self.dt = dt
         self.R = world.R
+        self.copies = int(copies)
+        assert self.R % self.copies == 0, "so xe phai chia het cho so ban sao"
+        self.unit = self.R // self.copies
         self.gen = torch.Generator(device=device)
         self.gen.manual_seed(seed + 991)
         import random
@@ -89,7 +112,7 @@ class BatchSim:
         self.in_slot, self.id_ok, self.charging = b(), b(), b()
         self.stranded, self.fallen, self.low_lamp = b(), b(), b()
 
-        g = torch.randn(self.R, 3, device=device, generator=self.gen)
+        g = self._randn(3)
         common = 1.0 + g[:, 0] * P.ODOM_SCALE_ERR
         diff = g[:, 1] * P.ODOM_DIFF_ERR
         self.od_l = common * (1.0 - diff)
@@ -112,6 +135,26 @@ class BatchSim:
                                    device=device)
         self.new_scan = False
         self._lidar_step = 2.0 * math.pi / N_LIDAR
+        # Den goi da bi nhat, theo TUNG XE. Ban v1 tat cai den tren mat bang,
+        # nhung o day mot mat bang duoc P ban sao dung chung: ban sao nao toi
+        # truoc se tat den cua ca P ban, va chung so ngau nhien mat nghia.
+        self.beacon_off = torch.zeros(self.R, self.w.beacon.shape[1],
+                                      dtype=torch.bool, device=device)
+
+    # --------------------------------------------------- chung so ngau nhien
+    def _randn(self, *tail):
+        """Nhieu chuan (R, *tail) nhung GIONG HET NHAU giua cac ban sao.
+
+        Day la chung so ngau nhien. Neu moi ban sao tu boc nhieu rieng thi
+        chenh lech diem giua hai bo trong so phan lon la chenh lech VAN MAY,
+        va ES se xep hang theo van may.
+        """
+        u = torch.randn(self.unit, *tail, device=self.device, generator=self.gen)
+        return u.repeat(self.copies, *([1] * len(tail)))
+
+    def _rand(self, *tail):
+        u = torch.rand(self.unit, *tail, device=self.device, generator=self.gen)
+        return u.repeat(self.copies, *([1] * len(tail)))
 
     # ------------------------------------------------------------------ dat xe
     def place(self, idx, x, y, th, battery=None, station=None, drift=0.0):
@@ -133,6 +176,8 @@ class BatchSim:
         if station is None:
             station = hp
         if drift is not None and torch.is_tensor(drift):
+            # Nguoi goi phai dua ca `drift` lan goc san neu muon chung so
+            # ngau nhien; o day chi boc them khi khong co.
             ang = (torch.rand(len(idx), device=self.device,
                               generator=self.gen) * 2 - 1) * math.pi
             station = torch.stack((station[:, 0] + drift * torch.cos(ang),
@@ -303,8 +348,13 @@ class BatchSim:
 
         just_charge = self.charging & ~was_charge
         if bool(just_charge.any()):
+            # Nho tram trong HE ODOM, dung y ban v1: ghi lai chinh cho dang
+            # cam. Ghi toa do that thi phan odom troi khong triet tieu nua va
+            # bo nho tram tro nen chinh xac hon doi thuc.
             hp = self.w.home_pose()
-            self.station = torch.where(just_charge[:, None], hp, self.station)
+            st = torch.stack((self.ox, self.oy,
+                              wrap(self.oth + (hp[:, 2] - self.th))), dim=-1)
+            self.station = torch.where(just_charge[:, None], st, self.station)
 
         self.t += self.dt
         self.w.step_dynamics(self.dt, self._pyrng)
@@ -333,11 +383,9 @@ class BatchSim:
         d = raycast(self.x, self.y, ang, self.w.seg, self.w.seg_e, P.LIDAR_MAX)
         dc = raycast_circles(self.x, self.y, ang, self._circles(), P.LIDAR_MAX)
         d = torch.minimum(d, dc)
-        d = d * (1.0 + torch.randn(d.shape, device=self.device,
-                                   generator=self.gen) * P.LIDAR_NOISE)
+        d = d * (1.0 + self._randn(d.shape[1]) * P.LIDAR_NOISE)
         ok = (d >= P.LIDAR_MIN) & (d < P.LIDAR_MAX - 1e-6)
-        ok &= torch.rand(d.shape, device=self.device,
-                         generator=self.gen) >= P.LIDAR_DROP
+        ok &= self._rand(d.shape[1]) >= P.LIDAR_DROP
         d = torch.round(d * 1000.0) / 1000.0
 
         slot = (idx % N_LIDAR)
@@ -390,7 +438,19 @@ class BatchSim:
 
     def ir_beacon(self):
         b = self.w.beacon
-        return self._ir(b[..., 0], b[..., 1], b[..., 2] > 0.5)
+        return self._ir(b[..., 0], b[..., 1], (b[..., 2] > 0.5) & ~self.beacon_off)
+
+    def take_beacon(self, radius):
+        """Xe nao vua cham vao mot den goi dang sang; tat den do cho RIENG xe do."""
+        b = self.w.beacon
+        near = ((b[..., 2] > 0.5) & ~self.beacon_off
+                & (torch.hypot(b[..., 0] - self.x[:, None],
+                               b[..., 1] - self.y[:, None]) < radius))
+        got, wi = near.max(dim=1)
+        one = torch.zeros_like(near)
+        one.scatter_(1, wi[:, None], got[:, None])
+        self.beacon_off |= one          # moi buoc chi nhat MOT den, giong ban v1
+        return got
 
     def _ir(self, ex, ey, on):
         dx = ex - self.x[:, None]

@@ -55,6 +55,7 @@ class BatchWorld:
         nb = max(1, max(len(b) for b in beacons))
 
         idx = torch.tensor(self.world_of, dtype=torch.long)
+        self._widx = idx.to(device)
         self.seg = _pad(segs, ns, 4)[idx].to(device)
         self.dock = _pad(docks, nd, 5)[idx].to(device)
         self.void = _pad(voids, nv, 4)[idx].to(device)
@@ -89,29 +90,42 @@ class BatchWorld:
         """
         self._mover_src = [[] for _ in self.worlds]
         self.mover.zero_()
+        self._frozen = True
 
     def step_dynamics(self, dt, rng):
+        """Buoc nguoi di lai va den goi.
+
+        Dung mot vong lap tren SO MAT BANG (2-6 cai) roi trai ra cho tung
+        xe bang mot phep chi so. Truoc day o day co mot vong lap tren SO XE:
+        voi 1.536 xe thi moi buoc mo phong phai chay 3.000 vong Python va
+        tao 1.536 tensor ti hon - ton hon ca phep ban tia, va ton cang nhieu
+        khi quan the cang lon, dung cai ma ca ban nay sinh ra de tranh.
+        """
         for w in self.worlds:
             w.step_dynamics(dt, rng)
         pos, bea = [], []
-        for wi in self.world_of:
-            ms = self._mover_src[wi]
+        for ms, bs in zip(self._mover_src, self._beacon_src):
             pos.append([(m.x, m.y, m.radius) for m in ms])
-            bs = self._beacon_src[wi]
             bea.append([(b.x, b.y, 1.0 if b.on else 0.0) for b in bs])
-        self.mover = _pad(pos, self.mover.shape[1], 3).to(self.device)
-        self.beacon = _pad(bea, self.beacon.shape[1], 3).to(self.device)
+        self.mover = _pad(pos, self.mover.shape[1], 3).to(self.device)[self._widx]
+        self.beacon = _pad(bea, self.beacon.shape[1], 3).to(self.device)[self._widx]
 
     def home_pose(self):
         g = self.home[:, None, None].expand(-1, 1, 5)
         return self.dock.gather(1, g).squeeze(1)[:, :3]
 
 
-def build(map_seeds, robots_per_map, device, n_docks=3, n_decoys=1):
+def build(map_seeds, robots_per_map, device, n_docks=3, n_decoys=1, copies=1):
     """Dung mot lo the gioi tu danh sach hat giong mat bang.
 
     Moi hat giong sinh ra DUNG cai mat bang ma ban v1 sinh ra voi hat giong
     do - de hai ban so sanh duoc voi nhau.
+
+    `copies` nhan cho ES: mot the he cham diem P bo trong so, va CHUNG SO
+    NGAU NHIEN doi hoi ca P bo phai chay tren DUNG cung mat bang, cung cho
+    dat xe, cung nguoi di lai. Nen ta lap DANH SACH XE len P lan ma van dung
+    CHUNG cac doi tuong mat bang - nguoi di lai buoc mot lan, ca P ban sao
+    deu thay y het. Hang thu (p*U + u) la ban sao p cua don vi u.
     """
     worlds, world_of, home_of = [], [], []
     for wi, seed in enumerate(map_seeds):
@@ -121,7 +135,7 @@ def build(map_seeds, robots_per_map, device, n_docks=3, n_decoys=1):
         for k in range(robots_per_map):
             world_of.append(wi)
             home_of.append(coded[k % len(coded)])
-    return BatchWorld(worlds, world_of, home_of, device)
+    return BatchWorld(worlds, world_of * copies, home_of * copies, device)
 
 
 def dock_local(px, py, pose):

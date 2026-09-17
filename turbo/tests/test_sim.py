@@ -110,7 +110,7 @@ class TestBatchIndependence(unittest.TestCase):
         bw4 = TW.build([3], 4, DEV, n_docks=3, n_decoys=1)
         bw1.freeze_movers()
         bw4.freeze_movers()
-        p1, p4 = bw1.home_pose(), bw4.home_pose()
+        p1 = bw1.home_pose()
         x = float(p1[0, 0] + 1.0 * math.cos(p1[0, 2]))
         y = float(p1[0, 1] + 1.0 * math.sin(p1[0, 2]))
         th = float(p1[0, 2]) + math.pi

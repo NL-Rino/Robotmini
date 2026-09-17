@@ -9,6 +9,10 @@ Ba man hinh:
              cho tien trinh do luu xong state.npz moi quay ve
   XEM CHAY   tha xe ra mat bang va nhin no di
 
+O man huan luyen co o "Chay bang": chon giua hai bo may chay khac nhau. Ca
+hai nuoi ra DUNG mot loai bo nao va ghi ra dung mot khuon file, chi khac
+cach chia viec - xem `turbo/docs/CHAY_BANG_GI.md`.
+
 Dung Tkinter - co san trong Python, khong phai cai gi them, chay duoc tren
 Windows cua ban.
 """
@@ -31,6 +35,7 @@ from sim import params as P                       # noqa: E402
 from sim.fleet import FleetSim                    # noqa: E402
 from sim.world import make_fleet_map              # noqa: E402
 from train.policy import GRUPolicy, PolicyBrain   # noqa: E402
+from turbo import device as TDEV                  # noqa: E402
 
 BRAINS = os.path.join(HERE, "brains")
 RUNS = os.path.join(HERE, "runs")
@@ -441,13 +446,31 @@ class TrainScreen(Screen):
                  font=FONT_B).grid(row=0, column=0, columnspan=8, sticky="w",
                                    padx=16, pady=(12, 8))
 
+        # Chay bang gi. Hai bo may chay cho ra cung mot loai bo nao va cung
+        # mot khuon file; khac nhau o cach chia viec, va do la tat ca.
+        self.engines = TDEV.engines()
+        er = tk.Frame(f, bg=PANEL)
+        er.grid(row=100, column=0, columnspan=8, sticky="w", padx=16, pady=(0, 10))
+        tk.Label(er, text="Chay bang", bg=PANEL, fg=FG, font=FONT
+                 ).pack(side="left", padx=(0, 8))
+        self.engine = tk.StringVar(value=self.engines[0][0])
+        cb = ttk.Combobox(er, textvariable=self.engine, state="readonly",
+                          width=46, font=FONT,
+                          values=[e[0] for e in self.engines])
+        cb.pack(side="left")
+        cb.bind("<<ComboboxSelected>>", self._on_engine)
+        self.engine_tip = tk.Label(er, text="", bg=PANEL, fg=DIM,
+                                   font=("Segoe UI", 8))
+        self.engine_tip.pack(side="left", padx=10)
+
         self.vars = {}
         specs = [
             ("pop", "Quan the", 24, "so ca the moi the he (chan, chia doi guong)"),
             ("steps", "So buoc/lan", 400, "moi lan danh gia dai bao nhieu buoc"),
             ("robots", "So xe", 3, "so xe tren mot mat bang khi huan luyen"),
-            ("episodes", "So lan/ca the", 2, "nho cung duoc vi da dung chung hat giong"),
-            ("jobs", "So luong", max(1, (os.cpu_count() or 2)), "so tien trinh song song"),
+            ("episodes", "So mat bang", 2, "nho cung duoc vi da dung chung hat giong"),
+            ("jobs", "So luong", max(1, (os.cpu_count() or 2)),
+             "so tien trinh song song (chi dung khi chay tung xe mot)"),
             ("gens", "So the he", 5000, "cu de to, dung luc nao thi bam Dung"),
             ("curriculum_gens", "Giao trinh", 600, "sau bao nhieu the he thi het de"),
         ]
@@ -467,7 +490,14 @@ class TrainScreen(Screen):
         self.hidden = hidden
         tk.Label(f, text=f"mang: GRU 48 -> {hidden} -> 2", bg=PANEL, fg=DIM,
                  font=FONT).grid(row=99, column=0, columnspan=8, sticky="w",
-                                 padx=16, pady=(6, 14))
+                                 padx=16, pady=(6, 4))
+        self._on_engine()
+
+    def _on_engine(self, _e=None):
+        for label, _mod, _dev, tip in self.engines:
+            if label == self.engine.get():
+                self.engine_tip.configure(text=tip)
+                return
 
     def _build_live(self):
         top = tk.Frame(self.live, bg=BG)
@@ -521,12 +551,22 @@ class TrainScreen(Screen):
             os.remove(stop_file)
 
         state = os.path.join(self.run_dir, "state.npz")
-        args = [sys.executable, "-u", "-m", "train.train",
+        mod, dev_key = "train.train", None
+        for label, m, d, _tip in self.engines:
+            if label == self.engine.get():
+                mod, dev_key = m, d
+        args = [sys.executable, "-u", "-m", mod,
                 "--out", self.run_dir, "--hidden", str(self.hidden),
                 "--pop", str(cfg["pop"]), "--steps", str(cfg["steps"]),
-                "--robots", str(cfg["robots"]), "--episodes", str(cfg["episodes"]),
-                "--jobs", str(cfg["jobs"]), "--gens", str(cfg["gens"]),
+                "--robots", str(cfg["robots"]), "--gens", str(cfg["gens"]),
                 "--curriculum-gens", str(cfg["curriculum_gens"])]
+        if mod == "turbo.train":
+            # Ban theo lo khong chia viec cho tien trinh nao ca: ca quan the
+            # nam trong mot phep tinh, nen "So luong" khong con nghia gi.
+            args += ["--maps", str(cfg["episodes"]), "--device", dev_key]
+        else:
+            args += ["--episodes", str(cfg["episodes"]),
+                     "--jobs", str(cfg["jobs"])]
         if os.path.exists(state):
             if messagebox.askyesno("Chay tiep?",
                                    f"Da co {state}.\n\nChay tiep tu do "

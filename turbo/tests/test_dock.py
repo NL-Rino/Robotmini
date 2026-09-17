@@ -66,7 +66,6 @@ class TestFrontOfDock(unittest.TestCase):
             bw = TW.build([seed], 4, DEV, n_docks=3, n_decoys=1)
             bw.freeze_movers()
             w = bw.worlds[0]
-            pose = bw.home_pose()
             cases = []
             for i in range(4):
                 dk = w.docks[int(bw.home[i])]

@@ -48,6 +48,11 @@ RUN_MIN = 0.15            # doan phang ngan hon the nay khong phai thanh trong
 RUN_MAX = 0.50            # dai hon the nay la tuong phong
 RUN_BEST = 0.33           # dai do duoc cua thanh trong that (31 cm + tran ra)
 MIN_VALID = 0.85          # 2% diem bi mat, doi het diem hop le la vo ich
+# Gop bao nhieu be rong vao mot phep tinh. Gop het 9 thi it loi goi nhat
+# (tot cho GPU) nhung mang trung gian 3,5 trieu o khong lot vao bo nho dem
+# CPU; gop 1 thi nguoc lai. Do duoc tren CPU: gop 1 la 143 ms, gop 3 la 147,
+# gop 9 la 165 - chenh 15%, nen lay khuc giua.
+WIDTH_GROUP = 3
 NB = 40                   # ban kinh lan can (~29 do) de do "co gi gan hon"
 NEAR_MIN = 0.12           # phai co vat gan hon thanh trong it nhat the nay
 # Goc toi cua tia len thanh trong. Lech hon the nay thi canh hoc BEN KIA da
@@ -113,6 +118,15 @@ def _flat_runs(xs, ys, ok):
 
     Tra ve (co, dai, tam_x, tam_y, goc_duong) - `goc_duong` la phuong cua
     doan thang (chua phai truc hoc).
+
+    Ca 9 be rong tinh CUNG MOT LUC tren truc thu hai, khong phai mot vong
+    lap Python 9 vong. Cung tung ay phep tinh, nhung la 20 loi goi thay vi
+    180 - tren CPU thi do la bot 160 lan dung day chuyen, con tren GPU thi
+    moi loi goi deu mat mot khoan cho co dinh nen cho nay an dam.
+
+    "Be rong LON NHAT con phang" ra bang mot phep cong: `alive` la AND luy
+    tien theo be rong (cummin tren 0/1), nen tong cua no chinh la so be rong
+    lien tiep con phang - va do la chi so can lay.
     """
     device = xs.device
     R, n = xs.shape
@@ -124,18 +138,16 @@ def _flat_runs(xs, ys, ok):
     Cn = _csum(ok.to(xs.dtype), pad)
     Cx, Cy = _csum(xv, pad), _csum(yv, pad)
     Cxx, Cyy, Cxy = _csum(xv * xv, pad), _csum(yv * yv, pad), _csum(xv * yv, pad)
-    base = torch.arange(n, device=device)
-    alive = None
-    have = torch.zeros(R, n, dtype=torch.bool, device=device)
-    run = torch.zeros(R, n, device=device)
-    cx = torch.zeros(R, n, device=device)
-    cy = torch.zeros(R, n, device=device)
-    ang = torch.zeros(R, n, device=device)
 
-    for k, h in enumerate(HALVES):
-        w = 2 * h + 1
-        lo, hi = base + pad - h, base + pad + h + 1
-        nv = Cn[:, hi] - Cn[:, lo]
+    base = torch.arange(n, device=device)[None, :]
+    parts = []
+    for i in range(0, len(HALVES), WIDTH_GROUP):
+        hh = torch.tensor(HALVES[i:i + WIDTH_GROUP], device=device)[:, None]
+        lo = base + pad - hh                       # (W,n)
+        hi = base + pad + hh + 1
+        w = (2 * hh + 1).to(xs.dtype)[None, :, :]  # (1,W,1)
+
+        nv = Cn[:, hi] - Cn[:, lo]                 # (R,W,n)
         inv = 1.0 / nv.clamp(min=1.0)
         mx = (Cx[:, hi] - Cx[:, lo]) * inv
         my = (Cy[:, hi] - Cy[:, lo]) * inv
@@ -148,22 +160,19 @@ def _flat_runs(xs, ys, ok):
         rms = (0.5 * tr - disc).clamp(min=0.0).sqrt()
         thr = (FLAT_K * torch.hypot(mx, my)).clamp(min=FLAT_FLOOR)
         flat = (nv >= MIN_VALID * w) & (rms < thr)
-
-        alive = flat if alive is None else (alive & flat)
-        if k == 0:
-            have = alive.clone()
         # Dai doan: lay tu PHUONG SAI chu khong tu hai dau. Hai dau co the la
         # diem bi mat (2% bi mat), va diem mat thi toa do la rac.
-        lam_big = (0.5 * tr + disc).clamp(min=0.0)
-        length = (12.0 * lam_big).sqrt()
+        length = (12.0 * (0.5 * tr + disc).clamp(min=0.0)).sqrt()
         line = 0.5 * torch.atan2(2.0 * sxy, sxx - syy)
-        run = torch.where(alive, length, run)
-        cx = torch.where(alive, mx, cx)
-        cy = torch.where(alive, my, cy)
-        ang = torch.where(alive, line, ang)
-        if not bool(alive.any()):
-            break
-    return have, run, cx, cy, ang
+        parts.append((flat, length, mx, my, line))
+
+    cat = lambda j: torch.cat([p[j] for p in parts], dim=1)
+    alive = torch.cummin(cat(0).to(torch.uint8), dim=1).values
+    have = alive[:, 0] > 0
+    k = (alive.sum(dim=1).long() - 1).clamp(min=0)[:, None, :]   # (R,1,n)
+    g = lambda j: cat(j).gather(1, k).squeeze(1)
+    return have, g(1), g(2), g(3), g(4)
+
 
 
 def _to_sensor(ang, cx, cy):
