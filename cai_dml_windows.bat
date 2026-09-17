@@ -4,13 +4,23 @@ rem  Cai moi truong chay THU bang card lien (Intel HD 620 / UHD / AMD)
 rem
 rem  Chay: bam doi vao file nay, hoac go  cai_dml_windows.bat  o cmd.
 rem
-rem  No KHONG dung toi ban Python dang co cua ban. No tao mot thu muc
-rem  rieng .venv-dml va cai torch-directml vao do thoi.
+rem  No KHONG dung toi ban Python dang co cua ban.
+rem
+rem  Moi truong ao dat o  %LOCALAPPDATA%\robotmini-dml  chu KHONG dat canh
+rem  du an. Ly do: Windows chi cho duong dan dai 260 ky tu, ma goi torch co
+rem  cay thu muc sau toi ~150 ky tu. Du an nam trong OneDrive thi rieng
+rem  phan dau da hon 90 ky tu, cong vao la tran -> pip bao
+rem  "[Errno 22] Invalid argument" giua chung.
 rem ===================================================================
 setlocal
 cd /d "%~dp0"
+set "VENV=%LOCALAPPDATA%\robotmini-dml"
+
 echo.
 echo === Cai moi truong chay bang card lien (DirectML) ===
+echo.
+echo  Du an     : %CD%
+echo  Moi truong: %VENV%
 echo.
 
 if defined VIRTUAL_ENV (
@@ -29,14 +39,18 @@ if "%PYCMD%"=="" goto thieu_python
 echo [1/4] Dung %PYCMD%
 
 rem --- 2. Tao moi truong ao -----------------------------------------
-if exist .venv-dml (
-  echo [2/4] Xoa .venv-dml cu
-  rmdir /s /q .venv-dml
+if exist ".venv-dml" (
+  echo       Xoa .venv-dml cu trong thu muc du an ^(dat sai cho^)
+  rmdir /s /q ".venv-dml"
 )
-echo [2/4] Tao .venv-dml
-%PYCMD% -m venv .venv-dml
+if exist "%VENV%" (
+  echo       Xoa moi truong cu
+  rmdir /s /q "%VENV%"
+)
+echo [2/4] Tao moi truong ao
+%PYCMD% -m venv "%VENV%"
 if errorlevel 1 goto loi
-call ".venv-dml\Scripts\activate.bat"
+call "%VENV%\Scripts\activate.bat"
 
 rem --- 3. Cai goi ---------------------------------------------------
 echo [3/4] Cai torch-directml (hon 500 MB, doi mot lat)
@@ -51,11 +65,8 @@ echo.
 python -m turbo.tools.check --device dml
 echo.
 echo ===================================================================
-echo  Lan sau muon chay lai, mo cmd o thu muc nay roi go:
-echo.
-echo      .venv-dml\Scripts\activate
-echo      python -m turbo.tools.check --device dml
-echo      python -m turbo.tools.measure speed --device dml
+echo  Xong. Lan sau chi can bam doi vao  chay_dml.bat
+echo  ^(hoac  chay_dml.bat do  de do toc do^)
 echo ===================================================================
 goto xong
 
@@ -89,12 +100,23 @@ goto xong
 
 :loi_goi
 echo.
-echo Cai goi that bai. Thay "from versions: none" thi ban Python nay van
-echo qua moi - xem turbo\docs\INTEL_620.md.
+echo CAI GOI THAT BAI.
+echo.
+echo   - Thay "[Errno 22] Invalid argument" hay "path too long":
+echo     duong dan van qua dai. Thu chep ca thu muc du an ra mot cho
+echo     ngan hon, vi du  C:\robot\  roi chay lai file nay.
+echo.
+echo   - Thay "from versions: none": ban Python van qua moi.
+echo.
+echo   - Thay loi ve quyen hay file dang mo: OneDrive co the dang khoa
+echo     file. Bam chuot phai vao bieu tuong OneDrive ^> Pause syncing,
+echo     roi chay lai.
+echo.
+echo   Chi tiet: turbo\docs\INTEL_620.md
 goto xong
 
 :loi
-echo Khong tao duoc moi truong ao.
+echo Khong tao duoc moi truong ao o %VENV%
 goto xong
 
 :xong

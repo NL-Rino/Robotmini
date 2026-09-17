@@ -19,9 +19,32 @@ O thu muc goc co `cai_dml_windows.bat`. Bam doi vao no. No se:
   1. tim mot ban Python tu 3.12 tro xuong tren may ban;
   2. neu khong co, in ra dung lenh can go de cai them (va KHONG dong toi
      ban Python dang co);
-  3. tao `.venv-dml`, cai `torch-directml`, roi chay `check` luon.
+  3. tao moi truong ao, cai `torch-directml`, roi chay `check` luon.
 
-Muon lam tay thi doc tiep.
+Cai xong roi thi lan sau bam doi `chay_dml.bat` (thu may) hoac go
+`chay_dml.bat do` (do toc do card roi do lai tren CPU de so).
+
+### Moi truong ao dat o dau, va tai sao khong dat canh du an
+
+Dat o `%LOCALAPPDATA%\robotmini-dml`, tuc la
+`C:\Users\<ten ban>\AppData\Local\robotmini-dml`.
+
+Ly do: **Windows chi cho duong dan dai 260 ky tu**, ma goi `torch` co cay
+thu muc sau toi khoang 150 ky tu (`...\torch\include\torch\csrc\api\
+include\torch\nn\modules\...`). Du an nam trong OneDrive thi rieng phan
+dau da hon 90 ky tu:
+
+    C:\Users\Cuong\OneDrive\Tai lieu\#robot\GPU\3\Robotmini-claude-...\
+
+Cong vao la tran, va pip do giua chung voi:
+
+    ERROR: Could not install packages due to an OSError:
+    [Errno 22] Invalid argument
+
+Dat moi truong ao ra cho ngan thi het. **Ma nguon du an cu de nguyen trong
+OneDrive cung duoc** - chi rieng moi truong ao phai ra ngoai.
+
+Van do thi chep ca thu muc du an ra mot cho ngan, vi du `C:\robot\`.
 
 ## Cai dat (Windows)
 
@@ -160,6 +183,18 @@ co bao nhieu nhan. Tren may 4 nhan o cho toi do, hai ban hoa nhau o quan
 the 32-64; tren may 2 nhan, diem hoa do se den som hon.
 
 Nho dat quan the cho to: **64 tro len**, ban theo lo moi phat huy.
+
+## Loi hay gap
+
+**`[Errno 22] Invalid argument` luc cai torch** -> duong dan qua dai. Xem
+muc "Moi truong ao dat o dau" o tren. `cai_dml_windows.bat` ban moi da tu
+dat ra cho ngan roi; van loi thi chep du an ra `C:\robot\`.
+
+**`No module named 'torch'`** -> chua bat moi truong ao. Dung `chay_dml.bat`
+thay vi go tay, no tu bat ho.
+
+**OneDrive khoa file** -> bam chuot phai bieu tuong OneDrive o khay he
+thong, chon *Pause syncing*, roi cai lai.
 
 ## Khong thay card
 

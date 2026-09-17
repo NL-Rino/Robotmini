@@ -2,23 +2,29 @@
 rem ===================================================================
 rem  Chay thu bang card lien. Cai xong roi thi dung file nay.
 rem  (Phai chay cai_dml_windows.bat mot lan truoc do.)
+rem
+rem    chay_dml.bat       -> thu xem may chay duoc den dau
+rem    chay_dml.bat do    -> do toc do card lien roi do lai tren CPU
 rem ===================================================================
 setlocal
 cd /d "%~dp0"
 
-if not exist ".venv-dml\Scripts\activate.bat" (
-  echo Chua co .venv-dml. Chay cai_dml_windows.bat truoc da.
+set "VENV=%LOCALAPPDATA%\robotmini-dml"
+if exist ".venv-dml\Scripts\activate.bat" set "VENV=%CD%\.venv-dml"
+
+if not exist "%VENV%\Scripts\activate.bat" (
+  echo Chua thay moi truong ao o:
+  echo   %VENV%
+  echo.
+  echo Chay cai_dml_windows.bat truoc da.
   echo.
   pause
   exit /b 1
 )
-call ".venv-dml\Scripts\activate.bat"
+call "%VENV%\Scripts\activate.bat"
 
-if "%~1"=="" goto kiemtra
 if /i "%~1"=="do" goto doc
-goto kiemtra
 
-:kiemtra
 python -m turbo.tools.check --device dml
 echo.
 echo Muon do toc do thi go:  chay_dml.bat do
@@ -27,7 +33,7 @@ pause
 exit /b 0
 
 :doc
-echo === Do toc do tren card lien ===
+echo === Do toc do tren CARD LIEN ===
 python -m turbo.tools.measure speed --device dml --pop 64 --no-v1
 echo.
 echo === Do lai tren CPU de so ===
