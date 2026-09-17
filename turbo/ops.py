@@ -124,12 +124,37 @@ def min_window_circ(x, half):
 
 
 # --------------------------------------------------------------- gom vao o
+FAN_MODE = "auto"          # auto | scatter | loop | cpu
+
+
+def set_fan_mode(mode):
+    """Chon cach gom tia vao quat. Chi de THU khi may la, dung mac dinh la
+    `auto`: co `scatter_reduce` thi dung, khong thi di duong vong."""
+    global FAN_MODE
+    assert mode in ("auto", "scatter", "loop", "cpu"), mode
+    FAN_MODE = mode
+
+
 def fan_min(idx, val, n_bins, fill, device):
     """Nho nhat cua `val` trong tung o `idx`. (R,N) -> (R,n_bins)."""
-    out = torch.full((val.shape[0], n_bins), fill, device=device)
-    if caps(device)["scatter_reduce"]:
+    mode = FAN_MODE
+    if mode == "auto":
+        mode = "scatter" if caps(device)["scatter_reduce"] else "loop"
+
+    if mode == "scatter":
+        out = torch.full((val.shape[0], n_bins), fill, device=device)
         return out.scatter_reduce(1, idx, val, reduce="amin",
                                   include_self=True)
+
+    if mode == "cpu":
+        # Gom tren CPU roi tra ve. Nghe thi do, nhung card LIEN dung chung
+        # thanh RAM voi CPU nen chuyen qua lai khong dat nhu card roi, va
+        # duong nay chi cap phat 2 mang thay vi 25.
+        i, v = idx.cpu(), val.cpu()
+        out = torch.full((v.shape[0], n_bins), fill)
+        return out.scatter_reduce(1, i, v, reduce="amin",
+                                  include_self=True).to(device)
+
     big = torch.full_like(val, fill)
     cols = [torch.where(idx == f, val, big).min(dim=1).values
             for f in range(n_bins)]

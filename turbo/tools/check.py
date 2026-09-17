@@ -15,6 +15,7 @@ can biet.
 """
 
 import argparse
+import gc
 import re
 import sys
 import time
@@ -39,10 +40,11 @@ def _fail(name, err):
         print("            " + ln.rstrip())
 
 
-def check(dev, robots=48, quiet=False):
+def check(dev, robots=48, quiet=False, only=None):
     robots = max(3, robots - robots % 3)
     pop = robots // 3
-    print(f"\nMay tinh: {dev}")
+    run = set(only) if only else {1, 2, 3, 4, 5, 6}
+    print(f"\nMay tinh: {dev}   (gom tia: {ops.FAN_MODE})")
     bad = 0
 
     print("\n1. Cac phep de thieu")
@@ -65,9 +67,14 @@ def check(dev, robots=48, quiet=False):
         if not v and "CAN CO" in note:
             bad += 1
 
-    print("\n2. Chay thu")
     from turbo import dock as D, perception as PC, sim as TS, world as TW
     from turbo.policy import BatchPolicy
+    bw = s = dk = v = bp = pr = h = y = None
+    if 2 not in run:
+        print("\n2. Chay thu - bo qua")
+        return _four(dev, pop, PC, bad, run)
+
+    print("\n2. Chay thu")
     try:
         bw = TW.build([3], 3, dev, n_docks=3, n_decoys=1, copies=pop)
         s = TS.BatchSim(bw, dev, seed=0, copies=pop)
@@ -130,6 +137,10 @@ def check(dev, robots=48, quiet=False):
         _fail("chay bo nao", e)
         return 1
 
+    if 3 not in run:
+        print("\n3. Phep nao dang phai nho CPU - bo qua")
+        return _four(dev, pop, PC, bad, run)
+
     print("\n3. Phep nao dang phai nho CPU tinh ho")
     lag = _fallbacks(s, dev, bp, pr, h, v)
     if lag:
@@ -141,6 +152,15 @@ def check(dev, robots=48, quiet=False):
     else:
         print("  Khong co phep nao phai nho CPU. Tot.")
 
+    # Tra lai bo nho cua muc 2 va 3 truoc khi sang muc 4. Card lien co
+    # kho tai nguyen nho hon card roi nhieu; giu lai het ca lo the gioi cu
+    # roi dung them mot lo nua la mot cach chac chan de no het cho.
+    bw = s = dk = v = bp = pr = h = y = None
+    gc.collect()
+    return _four(dev, pop, PC, bad, run)
+
+
+def _four(dev, pop, PC, bad, run):
     print("\n4. Chay mot lan danh gia day du")
     print("   (moi buoc deu DOI cho card lam xong roi moi bao, de loi no")
     print("    dung cho gay ra chu khong no o cho sau)")
@@ -213,6 +233,31 @@ def check(dev, robots=48, quiet=False):
         except Exception as e:
             _fail(f"quan the {n}", e)
             break
+
+    if 6 in run:
+        print("\n6. Giu duoc bao lau")
+        print("   (huan luyen that tao mot lo the gioi MOI moi the he; neu"
+              "\n    may het cho sau vai lan thi phai biet truoc)")
+        from turbo.policy import BatchPolicy as BP3
+        from turbo.rollout import Rollout as RO3
+        n_ok = 0
+        try:
+            for g in range(12):
+                r3 = RO3([3 + g], 3, pop, dev, seed=g)
+                b3 = BP3(16, dev)
+                t3 = (torch.randn(pop, b3.n_params) * 0.2).to(dev)
+                r3.reset(g * 7 + 1, 0.3)
+                r3.run(b3, t3, 12)
+                _sync(dev)
+                del r3, b3, t3
+                gc.collect()
+                n_ok = g + 1
+            print("  [ duoc  ] 12 the he lien tiep, khong het cho")
+        except Exception as e:
+            _fail(f"the he thu {n_ok + 1} (da qua {n_ok} the he)", e)
+            print("  -> may het cho sau vai the he. Giam quan the xuong,"
+                  "\n     hoac bao lai so the he chay duoc.")
+            return 1
 
     if bad:
         print(f"\nCon {bad} phep bat buoc khong chay duoc tren may nay.")
@@ -290,8 +335,15 @@ def _sync(dev):
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Thu may co chay duoc ban theo lo")
     ap.add_argument("--robots", type=int, default=48)
+    ap.add_argument("--fan", default="auto",
+                    choices=("auto", "scatter", "loop", "cpu"),
+                    help="cach gom tia vao quat - chi de thu khi may la")
+    ap.add_argument("--only", default=None,
+                    help="chi chay vai muc, vi du --only 4  hoac  --only 4,6")
     DEV.add_argument(ap)
     a = ap.parse_args(argv)
+    ops.set_fan_mode(a.fan)
+    only = [int(x) for x in a.only.split(",")] if a.only else None
     print(f"Python {sys.version.split()[0]}  |  torch {torch.__version__}")
     print("\nCac may tinh tim thay:")
     for d in DEV.list_devices():
@@ -300,7 +352,7 @@ def main(argv=None):
     if not ok:
         print(f"  (khong co DirectML: {why})")
     dev = DEV.from_args(a)
-    return check(dev, robots=a.robots)
+    return check(dev, robots=a.robots, only=only)
 
 
 if __name__ == "__main__":
