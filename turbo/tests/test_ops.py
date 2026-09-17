@@ -136,6 +136,13 @@ class TestDevicePicker(unittest.TestCase):
     def test_resolve(self):
         self.assertEqual(DEV.resolve("cpu").type, "cpu")
 
+    def test_directml_noi_ro_ly_do(self):
+        ok, why = DEV.directml_status()
+        self.assertIsInstance(ok, bool)
+        self.assertTrue(why, "khong co DirectML thi phai noi duoc ly do")
+        if not ok:
+            self.assertNotEqual(why.strip(), "")
+
     def test_engines(self):
         eng = DEV.engines()
         self.assertGreaterEqual(len(eng), 2)

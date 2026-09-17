@@ -7,9 +7,43 @@ nguoc lai. Chin muoi dong lap lai re hon mot rang buoc giua hai du an.
 """
 
 import os
+import platform
 import sys
 
 import torch
+
+# Ban torch-directml moi nhat (0.2.5.dev240914) chi co banh xe cho cp38..cp312,
+# va no ghim `torch==2.4.1` - ma torch 2.4.1 cung chi co toi cp312. Nen Python
+# 3.13 tro len thi pip bao "from versions: none", khong phai loi mang.
+DML_PY_MAX = (3, 12)
+
+
+def directml_status():
+    """Vi sao may nay chua co DirectML. Tra ve (chay_duoc, loi giai thich)."""
+    try:
+        import torch_directml as dml
+    except ImportError:
+        v = sys.version_info
+        if v[:2] > DML_PY_MAX:
+            return False, (
+                f"chua cai torch-directml, VA Python {v.major}.{v.minor} qua "
+                f"moi: goi do chi co ban cho Python 3.8 den "
+                f"{DML_PY_MAX[0]}.{DML_PY_MAX[1]}. Tao moi truong ao bang mot "
+                f"ban Python cu hon (xem turbo/docs/INTEL_620.md)")
+        if platform.system() not in ("Windows", "Linux"):
+            return False, (f"torch-directml chi co cho Windows va Linux, may "
+                           f"nay la {platform.system()}")
+        return False, "chua cai torch-directml (pip install torch-directml)"
+    except Exception as e:
+        return False, f"torch-directml cai roi nhung khong nap duoc: {e}"
+    try:
+        if not dml.is_available():
+            return False, ("torch-directml cai roi nhung khong thay card nao "
+                           "co DirectX 12 - thu cap nhat trinh dieu khien "
+                           "do hoa")
+        return True, f"{dml.device_count()} card"
+    except Exception as e:
+        return False, f"torch-directml loi khi do card: {e}"
 
 
 def _directml():
@@ -18,15 +52,14 @@ def _directml():
     Intel HD 620, UHD 620, Iris, va ca card AMD tich hop deu khong co CUDA.
     Chung co DirectX 12, va `torch-directml` bien DirectX 12 thanh mot may
     tinh cua PyTorch. Cai rieng: `pip install torch-directml` (no keo theo
-    ban torch rieng cua no, nen nen dung mot moi truong ao rieng).
+    ban torch 2.4.1 cua rieng no, nen phai dung mot moi truong ao rieng, va
+    moi truong do phai chay Python 3.12 tro xuong).
     """
-    try:
-        import torch_directml as dml
-    except Exception:
+    ok, _why = directml_status()
+    if not ok:
         return []
+    import torch_directml as dml
     try:
-        if not dml.is_available():
-            return []
         return [dict(key=f"dml:{i}", name=dml.device_name(i),
                      vram_gb=0.0, sm=0, kind="dml", index=i)
                 for i in range(dml.device_count())]
@@ -117,7 +150,10 @@ def pick(prefer=None, interactive=None, quiet=False):
                 print(f"chay tren {describe(by_key[p])}")
             return resolve(p)
         if not quiet:
-            print(f"khong co '{prefer}', chuyen sang lua chon khac")
+            print(f"KHONG CO '{prefer}' tren may nay.")
+            if p.startswith("dml"):
+                print("  ly do:", directml_status()[1])
+            print("  -> chuyen sang lua chon khac")
 
     gpus = [d for d in devs if d["key"] != "cpu"]
     if not gpus:

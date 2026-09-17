@@ -152,9 +152,13 @@ def main(argv=None):
     ap.add_argument("--robots", type=int, default=48)
     DEV.add_argument(ap)
     a = ap.parse_args(argv)
-    print("Cac may tinh tim thay:")
+    print(f"Python {sys.version.split()[0]}  |  torch {torch.__version__}")
+    print("\nCac may tinh tim thay:")
     for d in DEV.list_devices():
         print(f"  {d['key']:10s} {DEV.describe(d)}")
+    ok, why = DEV.directml_status()
+    if not ok:
+        print(f"  (khong co DirectML: {why})")
     dev = DEV.from_args(a)
     return check(dev, robots=a.robots)
 

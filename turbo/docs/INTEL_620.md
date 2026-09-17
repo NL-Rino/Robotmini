@@ -14,21 +14,56 @@ PyTorch, va HD 620 co DirectX 12.
 
 ## Cai dat (Windows)
 
-`torch-directml` keo theo mot ban `torch` rieng cua no, nen **dung mot moi
-truong ao rieng** de khong lam hong ban torch dang co:
+### Truoc tien: Python phai la 3.12 tro XUONG
+
+Day la cho vap dau tien va no khong hien ra ro rang. Ban moi nhat cua
+`torch-directml` (0.2.5.dev240914) chi co goi cho **Python 3.8 den 3.12**,
+va no ghim `torch==2.4.1` - ma torch 2.4.1 cung chi co toi 3.12.
+
+Chay Python 3.13 tro len thi pip bao dung cau nay:
+
+    ERROR: Could not find a version that satisfies the requirement
+    torch-directml (from versions: none)
+    ERROR: No matching distribution found for torch-directml
+
+**"from versions: none" nghia la khong co goi nao hop voi Python nay** -
+khong phai loi mang, khong phai loi pip cu.
+
+Kiem tra ban dang chay ban nao:
+
+    python -V
+    py -0                 (liet ke moi ban Python dang co tren may)
+
+### Co san Python 3.12 hoac cu hon
 
     cd duong\dan\den\Robotmini
-    python -m venv .venv-dml
+    py -3.12 -m venv .venv-dml
     .venv-dml\Scripts\activate
-    pip install torch-directml
-    pip install numpy
+    python -V                      (phai thay 3.12.x)
+    pip install torch-directml numpy
 
-Xong thi thu ngay:
+Doi `-3.12` thanh `-3.11` hay `-3.10` neu may ban co ban do.
+
+### Chua co ban nao tu 3.12 tro xuong
+
+Tai Python 3.12 o python.org/downloads (chon ban "Windows installer
+64-bit"). Luc cai **tich o "Add python.exe to PATH"** hoac cai binh thuong
+roi dung `py -3.12` nhu tren - ca hai deu duoc, va **khong lam hong ban
+Python 3.13 dang co**: `py` cho phep nhieu ban song song.
+
+### Kiem tra
 
     python -m turbo.tools.check --list-devices
 
-Thay mot dong co chu **DirectML** la duoc. Khong thay thi xem muc "Khong
-thay card" o duoi.
+Dong dau in ra ban Python va ban torch. Thay mot dong co chu **DirectML**
+la duoc. Khong thay thi chuong trinh se in ro LY DO ngay duoi - doc dong
+do truoc khi lam gi tiep.
+
+### Luu y ve moi truong ao nay
+
+`torch-directml` keo theo `torch==2.4.1` cua rieng no. Moi truong `.venv-dml`
+CHI dung de chay thu bang card lien. Ban torch dang co o may (de chay
+`app.py` binh thuong) khong bi dung toi.
 
 ## Thu xem may chay duoc den dau
 
@@ -83,6 +118,7 @@ Nho dat quan the cho to: **64 tro len**, ban theo lo moi phat huy.
 
 ## Khong thay card
 
+- `pip` bao `from versions: none` -> Python qua moi, xem muc cai dat o tren.
 - Cap nhat trinh dieu khien do hoa Intel (trang Intel, khong phai Windows
   Update).
 - Kiem tra card co DirectX 12: bam Win+R, go `dxdiag`, xem muc "Feature
