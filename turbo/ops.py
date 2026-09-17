@@ -70,10 +70,16 @@ def _probe(device):
     out["float64"] = _try(lambda: x.double() + 1.0)
     out["generator"] = _try(lambda: torch.randn(
         2, device=d, generator=torch.Generator(device=d)))
+    one = torch.zeros(1, dtype=torch.long, device=d)
     out["index_copy"] = _try(
         lambda: torch.zeros(2, 4, device=d).index_copy_(
-            0, torch.zeros(1, dtype=torch.long, device=d),
-            torch.ones(1, 4, device=d)))
+            0, one, torch.ones(1, 4, device=d)))
+    out["index_copy_bool"] = _try(
+        lambda: torch.zeros(2, dtype=torch.bool, device=d).index_copy_(
+            0, one, torch.ones(1, dtype=torch.bool, device=d)))
+    out["index_fill_bool"] = _try(
+        lambda: torch.zeros(2, dtype=torch.bool, device=d).index_fill_(
+            0, one, False))
     out["cumprod"] = _try(lambda: x.cumprod(dim=1))
     out["bmm"] = _try(lambda: torch.bmm(torch.ones(2, 3, 4, device=d),
                                         torch.ones(2, 4, 3, device=d)))
@@ -128,6 +134,22 @@ def fan_min(idx, val, n_bins, fill, device):
     cols = [torch.where(idx == f, val, big).min(dim=1).values
             for f in range(n_bins)]
     return torch.stack(cols, dim=1)
+
+
+def put_rows(dst, idx, src):
+    """`dst[idx] = src` theo hang, tra ve tensor ket qua.
+
+    Tren kieu BOOL thi di vong qua so thuc: `index_fill_` tren bool thi card
+    lien lam duoc, nhung `index_copy_` tren bool thi khong, va no tu choi
+    bang mot cau "unknown error" khong chi cho nao ca. Cho nay chi chay mot
+    lan moi the he nen doi qua doi lai khong ton gi.
+    """
+    if dst.dtype == torch.bool:
+        f = dst.to(torch.float32)
+        f.index_copy_(0, idx, src.to(torch.float32))
+        return f > 0.5
+    dst.index_copy_(0, idx, src)
+    return dst
 
 
 def any_and_first(mask, dim=1):

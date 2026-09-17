@@ -29,8 +29,14 @@ def _ok(name, note=""):
 
 
 def _fail(name, err):
+    """In ca vet goi ham. "unknown error" cua DirectML khong noi gi ca -
+    phai biet no chet o DONG NAO thi moi viet duong vong duoc."""
+    import traceback
     print(f"  [ KHONG ] {name}")
     print(f"            {type(err).__name__}: {err}")
+    print("            --- chet o day ---")
+    for ln in traceback.format_exc().strip().splitlines()[-9:]:
+        print("            " + ln.rstrip())
 
 
 def check(dev, robots=48, quiet=False):
@@ -47,6 +53,8 @@ def check(dev, robots=48, quiet=False):
             "float64": "so thuc 64 bit (khong can, chi de biet)",
             "generator": "bo sinh so rieng (khong can, da sinh tren CPU)",
             "index_copy": "dat lai xe - CAN CO",
+            "index_copy_bool": "dat lai xe, kieu dung/sai (co duong vong)",
+            "index_fill_bool": "dat lai xe, kieu dung/sai - CAN CO",
             "cumprod": "do hoc sac - CAN CO",
             "bmm": "chay bo nao - CAN CO",
             "atan2": "moi phep goc - CAN CO",
@@ -64,9 +72,12 @@ def check(dev, robots=48, quiet=False):
         bw = TW.build([3], 3, dev, n_docks=3, n_decoys=1, copies=pop)
         s = TS.BatchSim(bw, dev, seed=0, copies=pop)
         p = bw.home_pose()
+        # Dat kem MUC PIN: duong dat pin di qua mot phep khac (chep theo
+        # hang tren kieu dung/sai) ma duong khong pin khong cham toi.
         s.place(torch.arange(s.R).to(dev),
                 p[:, 0] + 0.9 * torch.cos(p[:, 2]),
-                p[:, 1] + 0.9 * torch.sin(p[:, 2]), p[:, 2] + 3.14159)
+                p[:, 1] + 0.9 * torch.sin(p[:, 2]), p[:, 2] + 3.14159,
+                battery=torch.full((s.R,), 0.5).to(dev))
         _ok("dung the gioi va dat xe", f"{s.R} xe")
     except Exception as e:
         _fail("dung the gioi va dat xe", e)
@@ -120,33 +131,63 @@ def check(dev, robots=48, quiet=False):
     else:
         print("  Khong co phep nao phai nho CPU. Tot.")
 
-    print("\n4. Nhanh cham the nao")
+    print("\n4. Chay mot lan danh gia day du")
+    from turbo.policy import BatchPolicy as BP
+    from turbo.rollout import Rollout
+    ro = bp2 = th2 = None
     try:
-        from turbo.policy import BatchPolicy as BP
-        from turbo.rollout import Rollout
-        for pop in (16, 64):   # noqa: F402
-            ro = Rollout([3], 3, pop, dev, seed=1)
-            bp = BP(16, dev)
-            th = (torch.randn(pop, bp.n_params) * 0.2).to(dev)
-            ro.reset(11, 0.3)
-            ro.run(bp, th, 5)
+        ro = Rollout([3], 3, pop, dev, seed=1)
+        _ok("dung lo the gioi", f"{ro.sim.R} xe, {ro.unit} xe moi bo trong so")
+    except Exception as e:
+        _fail("dung lo the gioi", e)
+        return 1
+    try:
+        ro.reset(11, 0.3)
+        _ok("dat lai xe theo giao trinh")
+    except Exception as e:
+        _fail("dat lai xe theo giao trinh", e)
+        return 1
+    try:
+        bp2 = BP(16, dev)
+        th2 = (torch.randn(pop, bp2.n_params) * 0.2).to(dev)
+        ro.run(bp2, th2, 1)
+        _ok("mot buoc: bo nao + vat ly + phan thuong")
+    except Exception as e:
+        _fail("mot buoc: bo nao + vat ly + phan thuong", e)
+        return 1
+    try:
+        ro.run(bp2, th2, 20)
+        _sync(dev)
+        _ok("hai muoi buoc lien")
+    except Exception as e:
+        _fail("hai muoi buoc lien", e)
+        return 1
+
+    print("\n5. Nhanh cham the nao")
+    for n in (pop, 4 * pop):
+        try:
+            r2 = Rollout([3], 3, n, dev, seed=1)
+            b2 = BP(16, dev)
+            t2 = (torch.randn(n, b2.n_params) * 0.2).to(dev)
+            r2.reset(11, 0.3)
+            r2.run(b2, t2, 5)
             _sync(dev)
-            ro.reset(11, 0.3)
+            r2.reset(11, 0.3)
             t = time.perf_counter()
-            ro.run(bp, th, 100)
+            r2.run(b2, t2, 100)
             _sync(dev)
             dt = time.perf_counter() - t
-            print(f"  quan the {pop:4d} ({ro.sim.R:4d} xe): "
-                  f"{100 * ro.sim.R / dt:9,.0f} buoc-xe/giay")
-    except Exception as e:
-        _fail("do toc do", e)
-        return 1
+            print(f"  quan the {n:4d} ({r2.sim.R:4d} xe): "
+                  f"{100 * r2.sim.R / dt:9,.0f} buoc-xe/giay")
+        except Exception as e:
+            _fail(f"quan the {n}", e)
+            break
 
     if bad:
         print(f"\nCon {bad} phep bat buoc khong chay duoc tren may nay.")
         return 1
-    print("\nChay duoc het. So o muc 4 cang lon cang tot. So voi ban "
-          "'tung xe mot'\nbang lenh:  python -m turbo.tools.measure speed")
+    print("\nChay duoc het. So o muc 5 cang lon cang tot. So voi ban "
+          "'tung xe mot'\nbang lenh:  chay_dml.bat do")
     return 0
 
 

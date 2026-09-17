@@ -172,7 +172,8 @@ class BatchSim:
             a.index_fill_(0, idx, False)
         if battery is not None:
             self.batt.index_copy_(0, idx, battery)
-            self.low_lamp.index_copy_(0, idx, battery < P.BATT_LOW)
+            self.low_lamp = ops.put_rows(self.low_lamp, idx,
+                                         battery < P.BATT_LOW)
         hp = self.w.home_pose().index_select(0, idx)
         if station is None:
             station = hp
@@ -450,7 +451,7 @@ class BatchSim:
                                b[..., 1] - self.y[:, None]) < radius))
         got, wi = ops.any_and_first(near)
         # moi buoc chi nhat MOT den, giong ban v1
-        self.beacon_off |= ops.one_hot_at(near, wi)
+        self.beacon_off = self.beacon_off | ops.one_hot_at(near, wi)
         return got
 
     def _ir(self, ex, ey, on):

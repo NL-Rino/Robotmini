@@ -167,7 +167,9 @@ class Rollout:
         t = lambda v: torch.tensor(v * rep, dtype=torch.float32).to(self.device)
         st = torch.tensor(sts, dtype=torch.float32).repeat(rep, 1).to(self.device)
         self.sim.t = 0.0
-        self.sim.beacon_off.zero_()
+        # Khong dung `zero_()`: phep tai cho tren kieu bool la thu card
+        # lien hay tu choi, va no tu choi bang mot cau 'unknown error'.
+        self.sim.beacon_off = torch.zeros_like(self.sim.beacon_off)
         self.sim._cursor = 0.0
         self.sim._rev = 0
         self.sim.place(torch.arange(self.sim.R).to(self.device),
