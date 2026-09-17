@@ -216,11 +216,16 @@ def _fallbacks(s, dev, bp, pr, h, v):
 
 
 def _sync(dev):
+    """Doi may lam xong. Card chay bat dong bo, khong doi thi do ra so ao."""
     try:
         if dev.type == "cuda":
             torch.cuda.synchronize()
         elif dev.type == "xpu":
             torch.xpu.synchronize()
+        elif dev.type != "cpu":
+            # Card lien khong co lenh doi rieng; doc mot so ve CPU thi buoc
+            # no phai lam xong het viec dang xep hang.
+            float(torch.ones(1, device=dev).add_(1.0).cpu())
     except Exception:
         pass
 

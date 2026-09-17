@@ -21,10 +21,37 @@ from sim import params as P
 from sim import dock_detector as D1
 from sim.geometry import point_segment_distance, wrap_pi_scalar
 from sim.lidar import Scan
-from turbo import dock as D2, sim as TS, world as TW
+from turbo import device as DEV, dock as D2, sim as TS, world as TW
 
 MATCH = 0.30              # gan hoc hon the nay -> bao dung
 FAR = 0.80                # xa moi hoc hon the nay -> bao gia that su
+
+
+def _dev(name):
+    """Doi ten may thanh torch.device.
+
+    KHONG dung `torch.device(name)` thang: card lien qua DirectML khong co
+    ten trong torch (no la "privateuseone"), nen `torch.device("dml")` bao
+    loi. `turbo.device.pick` biet duong doi.
+    """
+    if isinstance(name, torch.device):
+        return name
+    return DEV.pick(name, quiet=True)
+
+
+def _sync(dev):
+    """Doi may lam xong. Card chay bat dong bo, khong doi thi do ra so ao."""
+    try:
+        if dev.type == "cuda":
+            torch.cuda.synchronize()
+        elif dev.type == "xpu":
+            torch.xpu.synchronize()
+        elif dev.type != "cpu":
+            # Card lien khong co lenh doi rieng; doc mot so ve CPU thi buoc
+            # no phai lam xong het viec dang xep hang.
+            float(torch.ones(1, device=dev).add_(1.0).cpu())
+    except Exception:
+        pass
 
 
 def _poses(worlds, per_map, seed=4):
@@ -110,7 +137,7 @@ def _merge(parts):
 def measure_detector(sets=SETS, per_map=60, device="cpu"):
     """Hai bo mat bang doc lap, vi voi n~60 thi chenh 3 lan la nhieu chu khong
     phai ket qua - do mot bo roi chinh tham so theo no la tu lua minh."""
-    dev = torch.device(device)
+    dev = _dev(device)
     a, b = [], []
     for seeds, lseed in sets:
         bw, sim, poses = _scan_batch(list(seeds), per_map, dev, lidar_seed=lseed)
@@ -143,7 +170,7 @@ def measure_speed(pop=32, steps=600, robots=3, maps=2, hidden=16,
     import torch
     from turbo.policy import BatchPolicy
     from turbo.rollout import Rollout
-    dev = torch.device(device)
+    dev = _dev(device)
     work = pop * maps * robots * steps
     print(f"mot the he = {work:,} buoc-xe "
           f"(quan the {pop} x {maps} mat bang x {robots} xe x {steps} buoc)")
@@ -153,9 +180,11 @@ def measure_speed(pop=32, steps=600, robots=3, maps=2, hidden=16,
     th = torch.randn(pop, bp.n_params, device=dev) * 0.2
     ro.reset(11, 0.3)
     ro.run(bp, th, 5)
+    _sync(dev)
     ro.reset(11, 0.3)
     t = time.perf_counter()
     ro.run(bp, th, steps)
+    _sync(dev)
     dt = time.perf_counter() - t
     print(f"  turbo  {dt:7.1f} s  {work / dt:10,.0f} buoc-xe/giay  "
           f"({ro.sim.R} xe buoc cung luc)")
@@ -198,7 +227,7 @@ def measure_scale(pops=(16, 32, 64, 128, 256), steps=150, robots=3, maps=2,
     import torch
     from turbo.policy import BatchPolicy
     from turbo.rollout import Rollout
-    dev = torch.device(device)
+    dev = _dev(device)
     bp = BatchPolicy(hidden, dev)
     print(f"{'quan the':>9} {'xe cung luc':>12} {'buoc-xe/giay':>14}")
     for pop in pops:
@@ -206,9 +235,11 @@ def measure_scale(pops=(16, 32, 64, 128, 256), steps=150, robots=3, maps=2,
         th = torch.randn(pop, bp.n_params, device=dev) * 0.2
         ro.reset(11, 0.3)
         ro.run(bp, th, 5)
+        _sync(dev)
         ro.reset(11, 0.3)
         t = time.perf_counter()
         ro.run(bp, th, steps)
+        _sync(dev)
         dt = time.perf_counter() - t
         print(f"{pop:9d} {ro.sim.R:12d} {steps * ro.sim.R / dt:14,.0f}")
 

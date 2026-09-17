@@ -184,6 +184,22 @@ the 32-64; tren may 2 nhan, diem hoa do se den som hon.
 
 Nho dat quan the cho to: **64 tro len**, ban theo lo moi phat huy.
 
+## Cap nhat ma nguon khi chua co git
+
+Bam doi `capnhat.bat`. Co `git` thi no dung git; khong co thi no tai file
+nen tu GitHub roi chep de len - chi de len ma nguon, khong dung toi `runs\`
+hay `brains\` cua ban.
+
+Cach chac chan hon la cai git mot lan cho xong:
+
+    winget install Git.Git
+
+roi mo CMD MOI va tu do chi can `git pull`.
+
+**Tai lai ma nguon KHONG phai cai lai torch.** Moi truong ao nam o
+`%LOCALAPPDATA%\robotmini-dml`, ngoai thu muc du an, nen thu muc du an moi
+van dung lai duoc no - chi can chay `chay_dml.bat`.
+
 ## Loi hay gap
 
 **`[Errno 22] Invalid argument` luc cai torch** -> duong dan qua dai. Xem
