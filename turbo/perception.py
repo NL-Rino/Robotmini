@@ -16,6 +16,8 @@ from sim.perception import (I_BATTERY, I_CLIFF, I_CONTACT, I_DOCKS, I_FANS,
                             I_IR, I_MOTION, I_STATION, DOCK_RANGE_NORM,
                             STATION_RANGE_NORM)
 
+from .ops import hypot
+
 N_INPUTS = P.N_INPUTS
 
 
@@ -58,7 +60,7 @@ def build(sim, docks):
     # Bo nho tram: hieu hai so CUNG HE ODOM nen phan troi triet tieu.
     dx = sim.station[:, 0] - sim.ox
     dy = sim.station[:, 1] - sim.oy
-    dist = torch.hypot(dx, dy)
+    dist = hypot(dx, dy)
     bear = _wrap(torch.atan2(dy, dx) - sim.oth)
     axis_rel = _wrap(sim.station[:, 2] - sim.oth)
     v[:, I_STATION + 0] = 1.0

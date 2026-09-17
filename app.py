@@ -11,7 +11,8 @@ Ba man hinh:
 
 O man huan luyen co o "Chay bang": chon giua hai bo may chay khac nhau. Ca
 hai nuoi ra DUNG mot loai bo nao va ghi ra dung mot khuon file, chi khac
-cach chia viec - xem `turbo/docs/CHAY_BANG_GI.md`.
+cach chia viec - xem `turbo/docs/CHAY_BANG_GI.md`. May co card do hoa (ke
+ca card lien Intel qua DirectML) thi no hien ra san trong o do.
 
 Dung Tkinter - co san trong Python, khong phai cai gi them, chay duoc tren
 Windows cua ban.

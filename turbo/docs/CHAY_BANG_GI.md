@@ -34,35 +34,34 @@ nam trong mot phep tinh:
 
 ## Do duoc tren may nay (4 loi CPU, khong co card)
 
-Mot the he = quan the 32 x 2 mat bang x 3 xe x 600 buoc = 115.200 buoc-xe.
+Mot the he voi quan the 32 = 115.200 buoc-xe; quan the 128 = 460.800.
 
-| chay bang | giay/the he | buoc-xe/giay |
+| chay bang | quan the 32 | quan the 128 |
 |---|---:|---:|
-| tung xe mot (4 tien trinh) | 23,2 | 4.972 |
-| ca lo mot luc (CPU) | 26,1 | 4.411 |
+| tung xe mot (4 tien trinh) | 23,5 s | 87,8 s |
+| ca lo mot luc (CPU) | 24,4 s | **67,1 s** |
+| | hoa (0,96 lan) | **nhanh gap 1,31 lan** |
 
-**Tren may nay, voi quan the 32, ban theo lo CHAM HON 1,1 lan.** Do la con
-so that va toi khong giau no di. Ly do: ban theo lo lam nhieu phep tinh
-hon (no cham diem moi cua so, moi be rong, khong cat tia nhu ban cu), va
-tren CPU thi lam nhieu phep tinh hon la cham hon.
-
-Nhung hay nhin cho khac - **quan the cang to thi chuyen gi xay ra**:
+Day la cho quan trong nhat trong ca trang nay: **khong co con so "nhanh
+gap may lan" nao ca, co mot duong cong**.
 
 | quan the | xe cung luc | buoc-xe/giay |
 |---:|---:|---:|
-| 16 | 96 | 3.401 |
-| 32 | 192 | 4.309 |
-| 64 | 384 | 5.219 |
-| 128 | 768 | 6.032 |
-| 256 | 1.536 | 5.968 |
+| 16 | 96 | 3.652 |
+| 32 | 192 | 4.762 |
+| 64 | 384 | 5.802 |
+| 128 | 768 | 6.874 |
+| 256 | 1.536 | **7.584** |
 
-Ban "tung xe mot" nam ngang o 4.972 va se nam ngang mai: no chia viec cho
-4 loi, het 4 loi la het. Ban theo lo **di len theo kich thuoc quan the**,
-va tren CPU nay no dung o 6.000 vi het duong truyen bo nho - khong phai
-het phep tinh.
+Ban "tung xe mot" nam ngang o khoang 5.000 va se nam ngang mai: no chia
+viec cho 4 loi, het 4 loi la het. Ban theo lo **di len theo kich thuoc
+quan the** - quan the 256 chay nhanh gap doi quan the 16.
 
-Cho "het duong truyen bo nho" chinh la cho card do hoa co ly. RTX A4000
-co duong truyen rong khoang 45 lan CPU nay.
+Tren CPU nay duong cong do bat dau chung lai o khoang 7.500 vi het **duong
+truyen bo nho**, khong phai het phep tinh. Cho "het duong truyen bo nho"
+chinh la cho card do hoa roi co ly: RTX A4000 co bo nho RIENG, rong gap
+khoang 45 lan CPU nay. (Card LIEN thi khong: no dung chung ong voi CPU -
+xem `INTEL_620.md`.)
 
 ## Toi CHUA do duoc tren GPU
 
@@ -71,11 +70,24 @@ Toi khong dua cho ban mot con so GPU phong doan roi goi no la ket qua do.
 
 Ban thue may xong thi chay dung mot lenh nay de tu do:
 
+    python -m turbo.tools.check   --device cuda    # may chay duoc den dau
     python -m turbo.tools.measure scale --device cuda
     python -m turbo.tools.measure speed --device cuda
 
+Tren may nha (card lien Intel) thi doi `cuda` thanh `dml`.
+
 Cai dang xem la cot "buoc-xe/giay" co con di len khi quan the tang khong,
 va no dung o dau.
+
+## Card LIEN (Intel HD 620, UHD, Iris, AMD tich hop)
+
+Khong co CUDA, va `torch.xpu` cung khong nhan (no can Gen12 tro len). Duong
+duy nhat la **DirectML**, va no chay duoc. Cach cai va cach do: xem
+`turbo/docs/INTEL_620.md`.
+
+Mot dieu nen biet truoc: card lien **dung chung thanh RAM voi CPU**, ma cho
+nghen cua chuong trinh nay la duong truyen bo nho chu khong phai so phep
+tinh. Nen dung ky vong nhu card roi. Do di roi hay chon.
 
 ## Vay chon cai nao
 

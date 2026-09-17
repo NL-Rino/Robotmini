@@ -50,8 +50,8 @@ def _noise_matrix(n_params, gen, n_pairs, device):
     """
     eps = np.stack([noise(n_params, gen, i) for i in range(n_pairs)])
     both = np.concatenate([eps, -eps], axis=0)
-    return (torch.as_tensor(both, dtype=torch.float32, device=device),
-            torch.as_tensor(eps, dtype=torch.float32, device=device))
+    return (torch.as_tensor(both, dtype=torch.float32).to(device),
+            torch.as_tensor(eps, dtype=torch.float32).to(device))
 
 
 def _es_step(theta, eps, sp, sm, sigma, opt):
@@ -63,7 +63,7 @@ def _es_step(theta, eps, sp, sm, sigma, opt):
         return theta, 0.0
     g = (torch.as_tensor(w, dtype=torch.float32,
                          device=eps.device)[:, None] * eps).sum(0)
-    g = g.double().cpu().numpy() / (len(sp) * sigma)
+    g = g.cpu().double().numpy() / (len(sp) * sigma)
     return opt.step(theta, g), float(np.linalg.norm(g))
 
 
@@ -140,11 +140,11 @@ def train(out="runs/gpu1", hidden=16, pop=64, sigma=0.05, lr=0.02,
             ro.reset(crn, progress)
 
             both, eps = _noise_matrix(pol.n_params, gen, n_pairs, dev)
-            theta = torch.as_tensor(pol.theta, dtype=torch.float32,
-                                    device=dev)[None, :] + sigma * both
+            theta = torch.as_tensor(pol.theta, dtype=torch.float32
+                                    ).to(dev)[None, :] + sigma * both
             bp.set_norm(*pol.norm.state()[:2])
             sc, (osum, osq, on) = ro.run(bp, theta, steps)
-            sc = sc.double().cpu().numpy()
+            sc = sc.cpu().double().numpy()
             sp, sm = sc[:n_pairs], sc[n_pairs:]
 
             pol.theta, gnorm = _es_step(pol.theta, eps, sp, sm, sigma, opt)
@@ -153,8 +153,8 @@ def train(out="runs/gpu1", hidden=16, pop=64, sigma=0.05, lr=0.02,
             # Bo chuan hoa cap nhat O CUOI the he - trong mot the he ca quan
             # the phai dung chung mot bo, khong thi diem khong so sanh duoc.
             if on > 0:
-                bm = (osum / on).cpu().numpy()
-                bv = np.maximum((osq / on).cpu().numpy() - bm * bm, 0.0)
+                bm = (osum / on).cpu().double().numpy()
+                bv = np.maximum((osq / on).cpu().double().numpy() - bm * bm, 0.0)
                 pol.norm.update(bm, bv, on)
 
             st = ro.stats()
@@ -208,8 +208,8 @@ def _holdout(ro, bp, pol, steps):
     """Do tren mat bang XE CHUA TUNG THAY, khong xao trong so."""
     ro.reset(90210, progress=1.0)
     bp.set_norm(*pol.norm.state()[:2])
-    theta = torch.as_tensor(pol.theta, dtype=torch.float32,
-                            device=bp.device)[None, :]
+    theta = torch.as_tensor(pol.theta, dtype=torch.float32
+                            ).to(bp.device)[None, :]
     sc, _ = ro.run(bp, theta, steps, collect_obs=False)
     out = ro.stats()
     out["score"] = float(sc.mean())

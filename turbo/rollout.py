@@ -162,15 +162,15 @@ class Rollout:
         xs, ys, ths, batts, sts = start_states(
             self.bw, self.unit, rng, phase_mix(progress), station_drift)
         rep = self.n_pop
-        t = lambda v: torch.tensor(v * rep, dtype=torch.float32,
-                                   device=self.device)
-        st = torch.tensor(sts, dtype=torch.float32,
-                          device=self.device).repeat(rep, 1)
+        # Tao tren CPU roi moi chuyen sang may: tao THANG tren card lien
+        # (DirectML) tu mot danh sach Python la thu no hay khong lam duoc.
+        t = lambda v: torch.tensor(v * rep, dtype=torch.float32).to(self.device)
+        st = torch.tensor(sts, dtype=torch.float32).repeat(rep, 1).to(self.device)
         self.sim.t = 0.0
         self.sim.beacon_off.zero_()
         self.sim._cursor = 0.0
         self.sim._rev = 0
-        self.sim.place(torch.arange(self.sim.R, device=self.device),
+        self.sim.place(torch.arange(self.sim.R).to(self.device),
                        t(xs), t(ys), t(ths), battery=t(batts), station=st)
         # Trang thai tiep dien phai dung NGAY tu buoc dau: xe dat san trong
         # hoc cua no la "dang sac", va ham phan thuong doc cai do de biet co
@@ -193,12 +193,16 @@ class Rollout:
                 self.docks = D.detect(s.scan_r, s.scan_b, s.scan_ok)
             obs = PC.build(s, self.docks)
             if collect_obs:
+                # Cong don bang so thuc 32 bit roi moi doi sang 64 bit tren
+                # CPU o cuoi: card lien khong co so thuc 64 bit, ma 48 dau
+                # vao deu nam trong [-1;1] nen 32 bit thua do chinh xac.
+                s1 = obs.sum(0)
+                s2 = (obs * obs).sum(0)
                 if obs_sum is None:
-                    obs_sum = obs.sum(0).double()
-                    obs_sq = (obs.double() ** 2).sum(0)
+                    obs_sum, obs_sq = s1, s2
                 else:
-                    obs_sum += obs.sum(0).double()
-                    obs_sq += (obs.double() ** 2).sum(0)
+                    obs_sum = obs_sum + s1
+                    obs_sq = obs_sq + s2
             y, h = policy.step(p, obs.view(self.n_pop, self.unit, -1), h)
             ev = s.step(y.reshape(s.R, -1))
             self.rw.step(ev)

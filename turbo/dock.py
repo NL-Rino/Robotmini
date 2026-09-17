@@ -37,6 +37,9 @@ import torch
 
 from sim import params as P
 
+from . import ops
+from .ops import hypot
+
 # --------------------------------------------------------------- chang 1
 HALVES = (2, 3, 5, 7, 10, 14, 20, 28, 39)  # be rong 5,7,11,15,21,29,41,57,79
 # Nguong "phang" phai TI LE VOI CU LY: nhieu cua Camsense la ti le (1,2% cua
@@ -108,9 +111,7 @@ def _csum(a, pad):
 
 def _near_min(r, device):
     """Cu ly nho nhat trong lan can +-NB diem, tinh cho moi diem."""
-    rp = torch.cat((r[:, -NB:], r, r[:, :NB]), dim=1)[:, None, :]
-    out = -torch.nn.functional.max_pool1d(-rp, 2 * NB + 1, stride=1)
-    return out[:, 0, :]
+    return ops.min_window_circ(r, NB)
 
 
 def _flat_runs(xs, ys, ok):
@@ -147,18 +148,21 @@ def _flat_runs(xs, ys, ok):
         hi = base + pad + hh + 1
         w = (2 * hh + 1).to(xs.dtype)[None, :, :]  # (1,W,1)
 
-        nv = Cn[:, hi] - Cn[:, lo]                 # (R,W,n)
+        sel = lambda C: (C.index_select(1, hi.reshape(-1))
+                         - C.index_select(1, lo.reshape(-1))
+                         ).view(C.shape[0], hh.shape[0], -1)
+        nv = sel(Cn)                               # (R,W,n)
         inv = 1.0 / nv.clamp(min=1.0)
-        mx = (Cx[:, hi] - Cx[:, lo]) * inv
-        my = (Cy[:, hi] - Cy[:, lo]) * inv
-        sxx = (Cxx[:, hi] - Cxx[:, lo]) * inv - mx * mx
-        syy = (Cyy[:, hi] - Cyy[:, lo]) * inv - my * my
-        sxy = (Cxy[:, hi] - Cxy[:, lo]) * inv - mx * my
+        mx = sel(Cx) * inv
+        my = sel(Cy) * inv
+        sxx = sel(Cxx) * inv - mx * mx
+        syy = sel(Cyy) * inv - my * my
+        sxy = sel(Cxy) * inv - mx * my
         tr = sxx + syy
         det = sxx * syy - sxy * sxy
         disc = (0.25 * tr * tr - det).clamp(min=0.0).sqrt()
         rms = (0.5 * tr - disc).clamp(min=0.0).sqrt()
-        thr = (FLAT_K * torch.hypot(mx, my)).clamp(min=FLAT_FLOOR)
+        thr = (FLAT_K * hypot(mx, my)).clamp(min=FLAT_FLOOR)
         flat = (nv >= MIN_VALID * w) & (rms < thr)
         # Dai doan: lay tu PHUONG SAI chu khong tu hai dau. Hai dau co the la
         # diem bi mat (2% bi mat), va diem mat thi toa do la rac.
@@ -167,7 +171,7 @@ def _flat_runs(xs, ys, ok):
         parts.append((flat, length, mx, my, line))
 
     cat = lambda j: torch.cat([p[j] for p in parts], dim=1)
-    alive = torch.cummin(cat(0).to(torch.uint8), dim=1).values
+    alive = ops.cum_and(cat(0), dim=1)
     have = alive[:, 0] > 0
     k = (alive.sum(dim=1).long() - 1).clamp(min=0)[:, None, :]   # (R,1,n)
     g = lambda j: cat(j).gather(1, k).squeeze(1)
@@ -187,7 +191,7 @@ def _to_sensor(ang, cx, cy):
 def _stage_a(xs, ys, ok, scan_r):
     device = xs.device
     have, run, cx, cy, ang = _flat_runs(xs, ys, ok)
-    rc = torch.hypot(cx, cy)
+    rc = hypot(cx, cy)
     near = _near_min(scan_r, device)
     deep = rc - near                      # co gi gan hon thanh trong khong
 
@@ -216,7 +220,7 @@ def _pick(score, cx, cy, axis, k):
         oy.append(by)
         oa.append(axis.gather(1, g).squeeze(1))
         oi.append(wi)
-        near = torch.hypot(cx - bx[:, None], cy - by[:, None]) < DEDUP
+        near = hypot(cx - bx[:, None], cy - by[:, None]) < DEDUP
         score = torch.where(near, torch.zeros_like(score), score)
     return (torch.stack(os_, 1), torch.stack(ox, 1), torch.stack(oy, 1),
             torch.stack(oa, 1), torch.stack(oi, 1))
@@ -259,7 +263,7 @@ def _refit(px, py, m):
 def _verify(px, py, m0, cx, cy, axis):
     """Cham diem cac ung vien bang hinh hoc day du. Tra ve (diem, mieng, truc)."""
     mx, my = cx, cy
-    tol = (TOL_K * torch.hypot(cx, cy)).clamp(min=TOL_FLOOR)[..., None]
+    tol = (TOL_K * hypot(cx, cy)).clamp(min=TOL_FLOOR)[..., None]
     for _ in range(N_REFIT):
         u, v = _local(px, py, mx, my, axis)
         sel = m0 & (u.abs() < tol) & (v.abs() < BACK_SPAN)
@@ -279,7 +283,7 @@ def _verify(px, py, m0, cx, cy, axis):
     span = hi - lo
     rms = ((u.abs() * back).sum(-1) / nb.clamp(min=1)).clamp(min=0.0)
 
-    skin = (SKIN_K * torch.hypot(mx, my)).clamp(min=SKIN_FLOOR)[..., None]
+    skin = (SKIN_K * hypot(mx, my)).clamp(min=SKIN_FLOOR)[..., None]
     inner = (m0 & (u > skin) & (u < INNER_U_HI)
              & (v.abs() < INNER_V)).sum(-1)
     behind = (m0 & (u > BEHIND_LO) & (u < -skin)
@@ -323,10 +327,10 @@ def detect(scan_r, scan_b, scan_ok):
         bx = mx.gather(1, g).squeeze(1)
         by = my.gather(1, g).squeeze(1)
         out[:, k, 0] = best
-        out[:, k, 1] = torch.hypot(bx, by)
+        out[:, k, 1] = hypot(bx, by)
         out[:, k, 2] = torch.atan2(by, bx)
         out[:, k, 3] = axis.gather(1, g).squeeze(1)
         if k + 1 < N_OUT:
-            near = torch.hypot(mx - bx[:, None], my - by[:, None]) < DEDUP_OUT
+            near = hypot(mx - bx[:, None], my - by[:, None]) < DEDUP_OUT
             score = torch.where(near, torch.zeros_like(score), score)
     return out

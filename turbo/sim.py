@@ -17,6 +17,9 @@ import torch
 
 from sim import params as P
 
+from . import ops
+from .ops import hypot
+
 N_LIDAR = 500          # diem moi vong, giong `sim/lidar.py`
 
 
@@ -93,8 +96,7 @@ class BatchSim:
         self.copies = int(copies)
         assert self.R % self.copies == 0, "so xe phai chia het cho so ban sao"
         self.unit = self.R // self.copies
-        self.gen = torch.Generator(device=device)
-        self.gen.manual_seed(seed + 991)
+        self.rng = ops.HostRng(seed + 991, device)
         import random
         self._pyrng = random.Random(seed + 4242)
 
@@ -149,50 +151,46 @@ class BatchSim:
         chenh lech diem giua hai bo trong so phan lon la chenh lech VAN MAY,
         va ES se xep hang theo van may.
         """
-        u = torch.randn(self.unit, *tail, device=self.device, generator=self.gen)
+        u = self.rng.randn(self.unit, *tail)
         return u.repeat(self.copies, *([1] * len(tail)))
 
     def _rand(self, *tail):
-        u = torch.rand(self.unit, *tail, device=self.device, generator=self.gen)
+        u = self.rng.rand(self.unit, *tail)
         return u.repeat(self.copies, *([1] * len(tail)))
 
     # ------------------------------------------------------------------ dat xe
     def place(self, idx, x, y, th, battery=None, station=None, drift=0.0):
-        self.x[idx], self.y[idx], self.th[idx] = x, y, wrap(th)
-        self.ox[idx], self.oy[idx], self.oth[idx] = x, y, wrap(th)
-        self.vl[idx] = 0.0
-        self.vr[idx] = 0.0
-        self.cmd[idx] = 0.0
-        self.bump[idx] = 0.0
-        self.stranded[idx] = False
-        self.fallen[idx] = False
-        self.in_slot[idx] = False
-        self.id_ok[idx] = False
-        self.charging[idx] = False
+        # `a[idx] = b` khong phai may nao cung lam duoc; `index_copy_` thi co.
+        th = wrap(th)
+        for a, v in ((self.x, x), (self.y, y), (self.th, th),
+                     (self.ox, x), (self.oy, y), (self.oth, th)):
+            a.index_copy_(0, idx, v)
+        for a in (self.vl, self.vr, self.cmd, self.bump):
+            a.index_fill_(0, idx, 0.0)
+        for a in (self.stranded, self.fallen, self.in_slot, self.id_ok,
+                  self.charging):
+            a.index_fill_(0, idx, False)
         if battery is not None:
-            self.batt[idx] = battery
-            self.low_lamp[idx] = self.batt[idx] < P.BATT_LOW
-        hp = self.w.home_pose()[idx]
+            self.batt.index_copy_(0, idx, battery)
+            self.low_lamp.index_copy_(0, idx, battery < P.BATT_LOW)
+        hp = self.w.home_pose().index_select(0, idx)
         if station is None:
             station = hp
         if drift is not None and torch.is_tensor(drift):
             # Nguoi goi phai dua ca `drift` lan goc san neu muon chung so
             # ngau nhien; o day chi boc them khi khong co.
-            ang = (torch.rand(len(idx), device=self.device,
-                              generator=self.gen) * 2 - 1) * math.pi
+            ang = (self.rng.rand(len(idx)) * 2 - 1) * math.pi
             station = torch.stack((station[:, 0] + drift * torch.cos(ang),
                                    station[:, 1] + drift * torch.sin(ang),
-                                   station[:, 2] + torch.randn(
-                                       len(idx), device=self.device,
-                                       generator=self.gen) * 0.12 * drift),
-                                  dim=-1)
-        self.station[idx] = station
+                                   station[:, 2] + self.rng.randn(len(idx))
+                                   * 0.12 * drift), dim=-1)
+        self.station.index_copy_(0, idx, station)
         # Dat lai xe la dat lai ca LiDAR: xe vua bat len thi chua thay gi.
         # Khong xoa thi vai buoc dau tien xe con nhin bang vong quet cua lan
         # danh gia TRUOC - mot can phong khac han.
-        self.lok[idx] = False
-        self.scan_ok[idx] = False
-        self.scan_r[idx] = P.LIDAR_MAX
+        self.lok.index_fill_(0, idx, False)
+        self.scan_ok.index_fill_(0, idx, False)
+        self.scan_r.index_fill_(0, idx, P.LIDAR_MAX)
 
     # ------------------------------------------------------------------ vat ly
     def _circles(self):
@@ -212,7 +210,7 @@ class BatchSim:
             qy = seg[..., 1] + u * e[..., 1]
             dx = self.x[:, None] - qx
             dy = self.y[:, None] - qy
-            d = torch.hypot(dx, dy)
+            d = hypot(dx, dy)
             pen = torch.where(d < P.BODY_RADIUS, P.BODY_RADIUS - d,
                               torch.zeros_like(d))
             best, wi = pen.max(dim=1)
@@ -230,7 +228,7 @@ class BatchSim:
         c = self._circles()
         dx = self.x[:, None] - c[..., 0]
         dy = self.y[:, None] - c[..., 1]
-        d = torch.hypot(dx, dy).clamp(min=1e-6)
+        d = hypot(dx, dy).clamp(min=1e-6)
         over = (P.BODY_RADIUS + c[..., 2]) - d
         over = torch.where(c[..., 2] > 1e-6, over, torch.full_like(over, -1.0))
         best, wi = over.max(dim=1)
@@ -266,7 +264,7 @@ class BatchSim:
         ry = self.y - P.BODY_RADIUS * torch.sin(self.th)
         from .world import dock_local
         lx, ly = dock_local(rx, ry, self.w.dock)
-        h = torch.where(self.in_slot, P.CONTACT_HYST, 0.0)[:, None]
+        h = (self.in_slot.to(self.x.dtype) * P.CONTACT_HYST)[:, None]
         touch = ((lx <= -P.DOCK_CAVITY_D + P.CONTACT_LONG_TOL + h)
                  & (ly.abs() <= P.CONTACT_LAT_TOL + h)
                  & (lx > -P.DOCK_CAVITY_D - 0.12))
@@ -394,11 +392,12 @@ class BatchSim:
         d = torch.round(d * 1000.0) / 1000.0
 
         slot = (idx % N_LIDAR)
-        self.lr[:, slot] = d
-        self.lok[:, slot] = ok
-        self.lox[:, slot] = self.ox[:, None]
-        self.loy[:, slot] = self.oy[:, None]
-        self.loth[:, slot] = self.oth[:, None]
+        one = torch.ones(1, slot.numel(), device=self.device)
+        self.lr.index_copy_(1, slot, d)
+        self.lok.index_copy_(1, slot, ok)
+        self.lox.index_copy_(1, slot, self.ox[:, None] * one)
+        self.loy.index_copy_(1, slot, self.oy[:, None] * one)
+        self.loth.index_copy_(1, slot, self.oth[:, None] * one)
 
         if (i1 // N_LIDAR) > (i0 // N_LIDAR):
             self._rev += 1
@@ -418,7 +417,7 @@ class BatchSim:
         s = torch.sin(-self.oth)[:, None]
         lx = dx * c - dy * s
         ly = dx * s + dy * c
-        rr = torch.hypot(lx, ly)
+        rr = hypot(lx, ly)
         self.scan_r = torch.where(self.lok, rr,
                                   torch.full_like(rr, P.LIDAR_MAX))
         self.scan_b = torch.atan2(ly, lx)
@@ -428,11 +427,9 @@ class BatchSim:
         wdt = 2.0 * math.pi / P.N_LIDAR_FANS
         b = (self.scan_b + 0.5 * wdt) % (2.0 * math.pi)
         i = (b / wdt).floor().long().clamp(0, P.N_LIDAR_FANS - 1)
-        out = torch.full((self.R, P.N_LIDAR_FANS), P.LIDAR_MAX,
-                         device=self.device)
         r = torch.where(self.scan_ok, self.scan_r,
                         torch.full_like(self.scan_r, P.LIDAR_MAX))
-        return out.scatter_reduce(1, i, r, reduce="amin", include_self=True)
+        return ops.fan_min(i, r, P.N_LIDAR_FANS, P.LIDAR_MAX, self.device)
 
     # ------------------------------------------------------------------ hong ngoai
     def ir_dock(self):
@@ -449,18 +446,17 @@ class BatchSim:
         """Xe nao vua cham vao mot den goi dang sang; tat den do cho RIENG xe do."""
         b = self.w.beacon
         near = ((b[..., 2] > 0.5) & ~self.beacon_off
-                & (torch.hypot(b[..., 0] - self.x[:, None],
+                & (hypot(b[..., 0] - self.x[:, None],
                                b[..., 1] - self.y[:, None]) < radius))
         got, wi = near.max(dim=1)
-        one = torch.zeros_like(near)
-        one.scatter_(1, wi[:, None], got[:, None])
-        self.beacon_off |= one          # moi buoc chi nhat MOT den, giong ban v1
+        # moi buoc chi nhat MOT den, giong ban v1
+        self.beacon_off |= ops.one_hot_at(near, wi)
         return got
 
     def _ir(self, ex, ey, on):
         dx = ex - self.x[:, None]
         dy = ey - self.y[:, None]
-        dist = torch.hypot(dx, dy)
+        dist = hypot(dx, dy)
         bear = wrap(torch.atan2(dy, dx) - self.th[:, None])
         ok = on & (dist < P.IR_RANGE) & (bear.abs() < P.IR_FOV)
         big = torch.where(ok, dist, torch.full_like(dist, 1e9))

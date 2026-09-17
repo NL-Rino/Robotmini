@@ -17,6 +17,7 @@ from train.reward import (ALIVE, AWAY_DIST, BEACON, BEACON_RADIUS, BUMP,
                           CHARGE_ENERGY, CHARGE_LATCH, CLIFF_CAP, CLIFF_WARN,
                           FALL, FLAT, FULL_ENOUGH, HOMING, LOITER, LOITER_CAP,
                           SPIN, SPIN_FREE, SPIN_IN_DOCK, WRONG_DOCK)
+from .ops import hypot
 from .world import approach_point
 
 
@@ -47,7 +48,7 @@ class BatchReward:
     def reset_start(self):
         """Goi NGAY SAU khi dat xe: chot moc khoang cach, pin, han muc sac."""
         s = self.sim
-        self.prev_dist = torch.hypot(s.x - self.ax, s.y - self.ay)
+        self.prev_dist = hypot(s.x - self.ax, s.y - self.ay)
         self.prev_batt = s.batt.clone()
         # Xe xuat phat NGOAI hoc thi coi nhu da di xa roi. Chi xe xuat phat
         # trong hoc va dang co dien moi phai di mot vong roi ve.
@@ -122,7 +123,7 @@ class BatchReward:
         r = r + pen
         self.loiter_paid = self.loiter_paid + pen
 
-        away = torch.hypot(s.x - self.hx, s.y - self.hy)
+        away = hypot(s.x - self.hx, s.y - self.hy)
         self.max_away = torch.maximum(self.max_away, away)
 
         r = r + torch.where(ev["wrong"] & live, torch.full_like(r, WRONG_DOCK), zero)
@@ -134,7 +135,7 @@ class BatchReward:
 
         # dan duong: chi khi den bao sac dang sang, va dan toi DIEM DUNG
         # TRUOC MIENG chu khong phai toi cai hoc
-        dist = torch.hypot(s.x - self.ax, s.y - self.ay)
+        dist = hypot(s.x - self.ax, s.y - self.ay)
         gain = HOMING * (self.prev_dist - dist)
         r = r + torch.where(s.low_lamp & self.homing_on & live, gain, zero)
         self.homing_on = s.low_lamp

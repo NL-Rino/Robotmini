@@ -51,10 +51,10 @@ class BatchPolicy:
 
     # ------------------------------------------------------------------
     def set_norm(self, mean, var):
-        self.mean = torch.as_tensor(np.asarray(mean), dtype=torch.float32,
-                                    device=self.device)
+        self.mean = torch.as_tensor(np.asarray(mean),
+                                    dtype=torch.float32).to(self.device)
         self.std = torch.as_tensor(np.sqrt(np.asarray(var) + 1e-8),
-                                   dtype=torch.float32, device=self.device)
+                                   dtype=torch.float32).to(self.device)
 
     def unpack(self, theta):
         """theta: (P, n_params) -> dict cac tensor (P, ...)."""
@@ -70,20 +70,20 @@ class BatchPolicy:
         return torch.zeros(n_pop, n_each, self.n_h, device=self.device)
 
     def step(self, p, obs, h):
-        """obs: (P,G,48) tho. h: (P,G,H). Tra ve (y (P,G,2), h moi)."""
+        """obs: (P,G,48) tho. h: (P,G,H). Tra ve (y (P,G,2), h moi).
+
+        Viet bang `matmul` chu khong phai `einsum`: einsum cung ra bmm thoi,
+        nhung tren card lien no hay roi ve duong vong cham. (P,G,I) x (P,I,H)
+        la mot phep bmm - phep ma may nao cung lam duoc va lam nhanh.
+        """
         x = (obs - self.mean) / self.std
-        xz = torch.einsum("phi,pgi->pgh", p["Wz"], x)
-        xr = torch.einsum("phi,pgi->pgh", p["Wr"], x)
-        xn = torch.einsum("phi,pgi->pgh", p["Wn"], x)
-        z = torch.sigmoid(xz + torch.einsum("phk,pgk->pgh", p["Uz"], h)
-                          + p["bz"][:, None, :])
-        r = torch.sigmoid(xr + torch.einsum("phk,pgk->pgh", p["Ur"], h)
-                          + p["br"][:, None, :])
-        n = torch.tanh(xn + torch.einsum("phk,pgk->pgh", p["Un"], r * h)
-                       + p["bn"][:, None, :])
+        Tz, Tr, Tn = p["Wz"].mT, p["Wr"].mT, p["Wn"].mT
+        xz, xr, xn = x @ Tz, x @ Tr, x @ Tn
+        z = torch.sigmoid(xz + h @ p["Uz"].mT + p["bz"][:, None, :])
+        r = torch.sigmoid(xr + h @ p["Ur"].mT + p["br"][:, None, :])
+        n = torch.tanh(xn + (r * h) @ p["Un"].mT + p["bn"][:, None, :])
         h2 = (1.0 - z) * h + z * n
-        y = torch.tanh(torch.einsum("poh,pgh->pgo", p["Wy"], h2)
-                       + p["by"][:, None, :])
+        y = torch.tanh(h2 @ p["Wy"].mT + p["by"][:, None, :])
         return y, h2
 
 
