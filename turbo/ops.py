@@ -22,9 +22,18 @@ Chi con MOT phep phai do chung: gom tia vao quat (`fan_min`). Cach nhanh
 may nao co thi dung, khong co thi di duong vong.
 """
 
+import warnings
+
 import torch
 
 _CAPS = {}
+
+# DirectML khong bao loi khi thieu mot phep - no LANG LE chep tensor sang
+# CPU, tinh o do, roi chep nguoc lai. Chay thi van chay, nhung moi buoc mo
+# phong phai di ve CPU mot vong. Nen o day "chay duoc nhung phai nho CPU"
+# duoc tinh la KHONG co, va ta di duong vong cua minh - duong do o lai tren
+# card.
+_FALLBACK_WORDS = ("fall back to run on the CPU", "is not currently supported")
 
 
 def caps(device):
@@ -36,8 +45,15 @@ def caps(device):
 
 
 def _try(fn):
+    """Chay thu. Tra ve False neu loi, VA neu no am tham chay nho CPU."""
     try:
-        fn()
+        with warnings.catch_warnings(record=True) as got:
+            warnings.simplefilter("always")
+            fn()
+        for w in got:
+            msg = str(w.message)
+            if any(k in msg for k in _FALLBACK_WORDS):
+                return False
         return True
     except Exception:
         return False
@@ -112,6 +128,17 @@ def fan_min(idx, val, n_bins, fill, device):
     cols = [torch.where(idx == f, val, big).min(dim=1).values
             for f in range(n_bins)]
     return torch.stack(cols, dim=1)
+
+
+def any_and_first(mask, dim=1):
+    """(co hay khong, chi so dau tien dung) - khong dung `max` tren kieu bool.
+
+    `bool_tensor.max(dim)` chay tren CPU va card NVIDIA, nhung card lien thi
+    hen. Doi sang so thuc truoc: ket qua y het (ca hai deu tra ve chi so DAU
+    TIEN khi hoa), ma phep `max` tren so thuc thi may nao cung co.
+    """
+    v, i = mask.to(torch.float32).max(dim=dim)
+    return v > 0.5, i
 
 
 def one_hot_at(mask, col):

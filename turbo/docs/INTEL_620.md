@@ -96,6 +96,11 @@ CHI dung de chay thu bang card lien. Ban torch dang co o may (de chay
 
 ## Thu xem may chay duoc den dau
 
+Lan sau muon chay lai thi bam doi `chay_dml.bat` (no tu bat moi truong ao
+len ho). Muon go tay thi phai **bat moi truong ao truoc**, khong thi bao
+`No module named 'torch'`:
+
+    .venv-dml\Scripts\activate
     python -m turbo.tools.check --device dml
 
 No in ra ba muc:
@@ -105,15 +110,26 @@ No in ra ba muc:
    chu `CAN CO` moi la van de.
 2. **Chay thu** - dung the gioi, dat xe, mo phong 40 buoc, do hoc sac,
    dung 48 dau vao, chay bo nao.
-3. **Nhanh cham the nao** - so `buoc-xe/giay`.
+3. **Phep nao dang phai nho CPU** - cho nay quan trong. DirectML khong bao
+   loi khi thieu mot phep: no **lang le chep tensor sang CPU, tinh o do,
+   roi chep nguoc lai**. Chay van chay, nhung moi buoc mo phong mat mot
+   vong di ve, va do la cach chac chan nhat de card cham hon CPU. Muc nay
+   liet ke dung ten cac phep do - **gui danh sach do lai**, viet duong
+   vong cho chung thuong chi mat mot doan ngan.
+4. **Nhanh cham the nao** - so `buoc-xe/giay`.
 
 **Co dong nao ghi `KHONG` thi chup man hinh gui lai.** Do dung la thu can
 biet, va viet duong vong cho no thuong chi mat mot doan ngan.
 
 ## Roi so voi CPU
 
-    python -m turbo.tools.check --device cpu
-    python -m turbo.tools.measure speed --device cpu
+    chay_dml.bat do
+
+Lenh do chay ca hai roi in ra canh nhau. Go tay thi:
+
+    .venv-dml\Scripts\activate
+    python -m turbo.tools.measure speed --device dml --pop 64 --no-v1
+    python -m turbo.tools.measure speed --device cpu --pop 64
 
 So hai con so `buoc-xe/giay` voi nhau. Cai nao lon hon thi chon cai do o o
 **"Chay bang"** trong `app.py`.

@@ -268,7 +268,7 @@ class BatchSim:
         touch = ((lx <= -P.DOCK_CAVITY_D + P.CONTACT_LONG_TOL + h)
                  & (ly.abs() <= P.CONTACT_LAT_TOL + h)
                  & (lx > -P.DOCK_CAVITY_D - 0.12))
-        ins, which = touch.max(dim=1)
+        ins, which = ops.any_and_first(touch)
         code = self.w.dock_code.gather(1, which[:, None]).squeeze(1)
         pw = self.w.dock_powered.gather(1, which[:, None]).squeeze(1)
         return ins, ins & pw & (code == self.w.my_code), which
@@ -448,7 +448,7 @@ class BatchSim:
         near = ((b[..., 2] > 0.5) & ~self.beacon_off
                 & (hypot(b[..., 0] - self.x[:, None],
                                b[..., 1] - self.y[:, None]) < radius))
-        got, wi = near.max(dim=1)
+        got, wi = ops.any_and_first(near)
         # moi buoc chi nhat MOT den, giong ban v1
         self.beacon_off |= ops.one_hot_at(near, wi)
         return got

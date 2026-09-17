@@ -63,7 +63,9 @@ def build(sim, docks):
     dist = hypot(dx, dy)
     bear = _wrap(torch.atan2(dy, dx) - sim.oth)
     axis_rel = _wrap(sim.station[:, 2] - sim.oth)
-    v[:, I_STATION + 0] = 1.0
+    # `= 1.0` (so Python thuan) thi tren card lien no thanh mot so 64 bit va
+    # phep gan bao "self.dtype khac src.dtype". Phai la tensor cung kieu.
+    v[:, I_STATION + 0] = torch.ones_like(dist)
     v[:, I_STATION + 1] = _range_feat(dist, STATION_RANGE_NORM)
     v[:, I_STATION + 2] = torch.sin(bear)
     v[:, I_STATION + 3] = torch.cos(bear)

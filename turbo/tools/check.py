@@ -15,8 +15,10 @@ can biet.
 """
 
 import argparse
+import re
 import sys
 import time
+import warnings
 
 import torch
 
@@ -107,7 +109,18 @@ def check(dev, robots=48, quiet=False):
         _fail("chay bo nao", e)
         return 1
 
-    print("\n3. Nhanh cham the nao")
+    print("\n3. Phep nao dang phai nho CPU tinh ho")
+    lag = _fallbacks(s, dev, bp, pr, h, v)
+    if lag:
+        print("  Card nay thieu cac phep sau, PyTorch dang lang le chep sang")
+        print("  CPU tinh roi chep ve - moi buoc mo phong mat mot vong di ve:")
+        for name in lag:
+            print(f"    - {name}")
+        print("  Gui danh sach nay lai, viet duong vong cho chung duoc.")
+    else:
+        print("  Khong co phep nao phai nho CPU. Tot.")
+
+    print("\n4. Nhanh cham the nao")
     try:
         from turbo.policy import BatchPolicy as BP
         from turbo.rollout import Rollout
@@ -132,9 +145,33 @@ def check(dev, robots=48, quiet=False):
     if bad:
         print(f"\nCon {bad} phep bat buoc khong chay duoc tren may nay.")
         return 1
-    print("\nChay duoc het. So o muc 3 cang lon cang tot; so sanh voi muc "
+    print("\nChay duoc het. So o muc 4 cang lon cang tot. So voi ban "
           "'tung xe mot'\nbang lenh:  python -m turbo.tools.measure speed")
     return 0
+
+
+def _fallbacks(s, dev, bp, pr, h, v):
+    """Chay mot vong day du va nhat het cac loi canh bao "chay nho CPU"."""
+    from turbo import dock as D, perception as PC
+    names = []
+    with warnings.catch_warnings(record=True) as got:
+        warnings.simplefilter("always")
+        try:
+            for _ in range(12):
+                s.step(torch.zeros(s.R, 2, device=dev))
+                if s.lidar_step():
+                    dk = D.detect(s.scan_r, s.scan_b, s.scan_ok)
+                    PC.build(s, dk)
+            y, _h2 = bp.step(pr, v.view(v.shape[0] // 3, 3, -1), h)
+            float(y.sum())
+        except Exception as e:
+            print(f"  (chay thu de nhat canh bao thi loi: "
+                  f"{type(e).__name__}: {e})")
+    for w in got:
+        m = re.search(r"operator '([^']+)'", str(w.message))
+        if m and m.group(1) not in names:
+            names.append(m.group(1))
+    return names
 
 
 def _sync(dev):

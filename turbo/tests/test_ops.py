@@ -126,6 +126,50 @@ class TestFallback(unittest.TestCase):
                         f"duong vong ra diem khac: {fast} vs {slow}")
 
 
+class TestNoScalarAssign(unittest.TestCase):
+    """Khong duoc gan mot SO PYTHON THUAN vao lat cat cua tensor.
+
+    Tren CPU thi `v[:, 5] = 1.0` chay binh thuong. Tren card lien no bao
+    `scatter(): Expected self.dtype to be equal to src.dtype`, vi so Python
+    thanh mot so 64 bit con tensor la 32 bit. Da vap dung loi nay o buoc
+    "dung 48 dau vao". Bai kiem thu nay bat ca LOP loi do, khong phai mot
+    dong cu the.
+    """
+
+    def test_ca_vong_chay_khong_gan_so_thuan(self):
+        real = torch.Tensor.__setitem__
+        bad = []
+
+        def spy(self, key, value):
+            if isinstance(value, (int, float, bool)):
+                import traceback
+                where = [l for l in traceback.format_stack()[:-1]
+                         if "/turbo/" in l.replace("\\", "/")]
+                bad.append(where[-1].strip() if where else "?")
+            return real(self, key, value)
+
+        torch.Tensor.__setitem__ = spy
+        try:
+            from turbo import dock as D, perception as PC
+            ro = Rollout([3], 3, 2, DEV_CPU, seed=1)
+            ro.reset(11, 0.3)
+            pol = BatchPolicy(12, DEV_CPU)
+            th = torch.randn(2, pol.n_params) * 0.2
+            p = pol.unpack(th)
+            h = pol.new_state(2, ro.unit)
+            dk = torch.zeros(ro.sim.R, 2, 4)
+            for _ in range(30):
+                if ro.sim.lidar_step():
+                    dk = D.detect(ro.sim.scan_r, ro.sim.scan_b, ro.sim.scan_ok)
+                v = PC.build(ro.sim, dk)
+                y, h = pol.step(p, v.view(2, ro.unit, -1), h)
+                ro.rw.step(ro.sim.step(y.reshape(ro.sim.R, -1)))
+        finally:
+            torch.Tensor.__setitem__ = real
+        self.assertEqual(bad, [], "gan so Python thuan vao tensor:\n  "
+                                 + "\n  ".join(dict.fromkeys(bad)))
+
+
 class TestDevicePicker(unittest.TestCase):
 
     def test_luon_co_CPU(self):
