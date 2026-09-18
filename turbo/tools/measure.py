@@ -160,7 +160,7 @@ def measure_detector(sets=SETS, per_map=60, device="cpu"):
 
 
 def measure_speed(pop=32, steps=600, robots=3, maps=2, hidden=16,
-                  device="cpu", also_v1=True):
+                  device="cpu", also_v1=True, fan=None):
     """Mot THE HE cua ban turbo canh mot the he cua ban v1.
 
     Dem bang BUOC-XE chu khong bang giay: hai ban lam cung khoi luong viec
@@ -175,9 +175,12 @@ def measure_speed(pop=32, steps=600, robots=3, maps=2, hidden=16,
     print(f"mot the he = {work:,} buoc-xe "
           f"(quan the {pop} x {maps} mat bang x {robots} xe x {steps} buoc)")
 
+    if fan:
+        from turbo import ops as _ops
+        _ops.set_fan_mode(fan)
     ro = Rollout([3, 5][:maps] or [3], robots, pop, dev, seed=1)
     bp = BatchPolicy(hidden, dev)
-    th = torch.randn(pop, bp.n_params, device=dev) * 0.2
+    th = (torch.randn(pop, bp.n_params) * 0.2).to(dev)
     ro.reset(11, 0.3)
     ro.run(bp, th, 5)
     _sync(dev)
@@ -215,7 +218,7 @@ def measure_speed(pop=32, steps=600, robots=3, maps=2, hidden=16,
         print(f"  -> turbo nhanh gap {dt1 / dt:.2f} lan tren may nay")
 
 
-def measure_scale(pops=(16, 32, 64, 128, 256), steps=150, robots=3, maps=2,
+def measure_scale(pops=(16, 32, 64, 128, 256), steps=150, robots=3, maps=1,
                   hidden=16, device="cpu"):
     """Quan the cang lon thi ban nao duoi kip?
 
@@ -232,7 +235,7 @@ def measure_scale(pops=(16, 32, 64, 128, 256), steps=150, robots=3, maps=2,
     print(f"{'quan the':>9} {'xe cung luc':>12} {'buoc-xe/giay':>14}")
     for pop in pops:
         ro = Rollout([3, 5][:maps] or [3], robots, pop, dev, seed=1)
-        th = torch.randn(pop, bp.n_params, device=dev) * 0.2
+        th = (torch.randn(pop, bp.n_params) * 0.2).to(dev)
         ro.reset(11, 0.3)
         ro.run(bp, th, 5)
         _sync(dev)
@@ -250,15 +253,26 @@ def main():
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--pop", type=int, default=32)
     ap.add_argument("--steps", type=int, default=600)
+    ap.add_argument("--maps", type=int, default=2)
     ap.add_argument("--no-v1", action="store_true")
+    ap.add_argument("--fan", default=None,
+                    choices=("auto", "scatter", "loop", "cpu"))
+    ap.add_argument("--pops", default=None,
+                    help="vi du --pops 16,64,256")
     a = ap.parse_args()
     if a.what == "detector":
         measure_detector(device=a.device)
     elif a.what == "speed":
-        measure_speed(pop=a.pop, steps=a.steps, device=a.device,
-                      also_v1=not a.no_v1)
+        measure_speed(pop=a.pop, steps=a.steps, device=a.device, maps=a.maps,
+                      also_v1=not a.no_v1, fan=a.fan)
     elif a.what == "scale":
-        measure_scale(device=a.device)
+        pops = ([int(x) for x in a.pops.split(",")] if a.pops
+                else (16, 32, 64, 128, 256))
+        if a.fan:
+            from turbo import ops as _ops
+            _ops.set_fan_mode(a.fan)
+        measure_scale(pops=pops, steps=a.steps if a.steps != 600 else 150,
+                      device=a.device, maps=a.maps)
 
 
 if __name__ == "__main__":

@@ -157,6 +157,31 @@ Lenh do chay ca hai roi in ra canh nhau. Go tay thi:
 So hai con so `buoc-xe/giay` voi nhau. Cai nao lon hon thi chon cai do o o
 **"Chay bang"** trong `app.py`.
 
+## Do duoc that tren HD 620 (18/09/2026)
+
+Chay duoc het. Toc do:
+
+| quan the | xe cung luc | buoc-xe/giay |
+|---:|---:|---:|
+| 16 | 48 | 220 |
+| 64 | 192 | 853 |
+
+Va Task Manager luc do: **GPU 3D chay 2-8%**. Card gan nhu nam khong.
+
+Do la dau hieu ro rang cua mot thu: khong phai card yeu, ma la **tien goi
+phep**. Moi lan PyTorch goi mot phep len DirectML, no phai dung mot doi
+tuong DirectML roi day xuong hang doi - mat khoang nua mili giay, BAT KE
+mang to hay nho. Mot buoc mo phong goi vai tram phep, nen o lo nho thi
+99% thoi gian la tien goi, con phep tinh that thi xong trong nhay mat.
+
+Bang chung: 4 lan so xe -> gan dung 4 lan toc do (220 -> 853). Neu card
+dang phai TINH that thi gap 4 lan xe se KHONG duoc gap 4 lan toc do. Tang
+tuyen tinh nhu vay nghia la moi buoc van mat dung tung ay thoi gian, chi
+la lam duoc nhieu viec hon trong do.
+
+**Nen: lo cang to cang duoc gia, va gan nhu duoc khong.** `chay_dml.bat do`
+do toi quan the 256 de xem no thang den dau.
+
 ## Toi doan no nhanh hon bao nhieu
 
 **Toi khong biet, va toi khong doan.** Cho dang lam viec khong co card nao

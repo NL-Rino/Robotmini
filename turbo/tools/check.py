@@ -235,24 +235,40 @@ def _four(dev, pop, PC, bad, run, dev_key=None, retry=True):
 
     if 5 in run:
         print("\n5. Nhanh cham the nao")
-    for n in ((pop, 4 * pop) if 5 in run else ()):
-        try:
-            r2 = Rollout([3], 3, n, dev, seed=1)
-            b2 = BP(16, dev)
-            t2 = (torch.randn(n, b2.n_params) * 0.2).to(dev)
-            r2.reset(11, 0.3)
-            r2.run(b2, t2, 5)
-            _sync(dev)
-            r2.reset(11, 0.3)
-            t = time.perf_counter()
-            r2.run(b2, t2, 100)
-            _sync(dev)
-            dt = time.perf_counter() - t
-            print(f"  quan the {n:4d} ({r2.sim.R:4d} xe): "
-                  f"{100 * r2.sim.R / dt:9,.0f} buoc-xe/giay")
-        except Exception as e:
-            _fail(f"quan the {n}", e)
-            break
+        print("   (card lien tinh tien theo SO LAN GOI PHEP chu khong theo")
+        print("    kich thuoc mang. Neu cot phai tang gan nhu ti le voi so")
+        print("    xe thi lo cang to cang duoc gia.)")
+        truoc = None
+        for n in (pop, 4 * pop, 16 * pop):
+            r = _do_toc_do(n, dev)
+            if r is None:
+                break
+            R, tocdo = r
+            them = ""
+            if truoc:
+                them = f"   (gap {tocdo / truoc[1]:.1f} lan khi xe gap " \
+                       f"{R / truoc[0]:.0f} lan)"
+            print(f"  quan the {n:4d} ({R:5d} xe): {tocdo:9,.0f} buoc-xe/giay"
+                  f"{them}")
+            truoc = (R, tocdo)
+
+        if dev.type != "cpu":
+            print("\n   Thu cac cach gom tia (cai nao goi it phep nhat "
+                  "thi nhanh nhat):")
+            cu = ops.FAN_MODE
+            tot = None
+            for m in ("loop", "cpu", "scatter"):
+                ops.set_fan_mode(m)
+                r = _do_toc_do(4 * pop, dev)
+                if r is None:
+                    print(f"     {m:8s} khong chay duoc")
+                    continue
+                print(f"     {m:8s} {r[1]:9,.0f} buoc-xe/giay")
+                if tot is None or r[1] > tot[1]:
+                    tot = (m, r[1])
+            ops.set_fan_mode(cu)
+            if tot:
+                print(f"   -> nhanh nhat la '{tot[0]}'")
 
     if 6 in run:
         print("\n6. Giu duoc bao lau")
@@ -285,6 +301,28 @@ def _four(dev, pop, PC, bad, run, dev_key=None, retry=True):
     print("\nChay duoc het. So o muc 5 cang lon cang tot. So voi ban "
           "'tung xe mot'\nbang lenh:  chay_dml.bat do")
     return 0
+
+
+def _do_toc_do(n_pop, dev, muc_tieu=25000):
+    """Do mot lo `n_pop` bo trong so. Tra ve (so xe, buoc-xe/giay)."""
+    from turbo.policy import BatchPolicy as BP
+    from turbo.rollout import Rollout
+    try:
+        ro = Rollout([3], 3, n_pop, dev, seed=1)
+        bp = BP(16, dev)
+        th = (torch.randn(n_pop, bp.n_params) * 0.2).to(dev)
+        steps = min(150, max(12, muc_tieu // max(1, ro.sim.R)))
+        ro.reset(11, 0.3)
+        ro.run(bp, th, 5)
+        _sync(dev)
+        ro.reset(11, 0.3)
+        t = time.perf_counter()
+        ro.run(bp, th, steps)
+        _sync(dev)
+        return ro.sim.R, steps * ro.sim.R / (time.perf_counter() - t)
+    except Exception as e:
+        _fail(f"quan the {n_pop}", e)
+        return None
 
 
 def _deep_build(sim, docks, dev):

@@ -37,11 +37,15 @@ pause
 exit /b 0
 
 :doc
-echo === Do toc do tren CARD LIEN ===
-python -m turbo.tools.measure speed --device dml --pop 64 --no-v1
+echo === CARD LIEN: quan the cang to thi duoc bao nhieu ===
+python -m turbo.tools.measure scale --device dml --pops 16,64,256 --maps 1
 echo.
-echo === Do lai tren CPU de so ===
-python -m turbo.tools.measure speed --device cpu --pop 64
+echo === CPU: cung bang do de so ===
+python -m turbo.tools.measure scale --device cpu --pops 16,64,256 --maps 1
+echo.
+echo === Mot THE HE that: card lien so voi ban "tung xe mot" ===
+python -m turbo.tools.measure speed --device dml --pop 64 --maps 1 --no-v1
+python -m turbo.tools.measure speed --device cpu --pop 64 --maps 1
 echo.
 pause
 exit /b 0
