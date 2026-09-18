@@ -84,9 +84,9 @@ def _scan_batch(seeds, per_map, device, lidar_seed=0):
     s = TS.BatchSim(bw, device, seed=lidar_seed)
     idx = torch.arange(len(poses))
     s.place(idx,
-            torch.tensor([p[1] for p in poses]),
-            torch.tensor([p[2] for p in poses]),
-            torch.tensor([p[3] for p in poses]))
+            torch.tensor([p[1] for p in poses], dtype=torch.float32),
+            torch.tensor([p[2] for p in poses], dtype=torch.float32),
+            torch.tensor([p[3] for p in poses], dtype=torch.float32))
     for _ in range(4000):
         s.step(torch.zeros(len(poses), 2))
         if s.lidar_step():

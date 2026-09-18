@@ -86,13 +86,23 @@ def check(dev, robots=48, quiet=False, only=None, dev_key=None,
         s.place(torch.arange(s.R).to(dev),
                 p[:, 0] + 0.9 * torch.cos(p[:, 2]),
                 p[:, 1] + 0.9 * torch.sin(p[:, 2]), p[:, 2] + 3.14159,
-                battery=torch.full((s.R,), 0.5).to(dev))
+                battery=torch.full((s.R,), 0.5,
+                                   dtype=torch.float32).to(dev))
         _touch(s.x)
         _sync(dev)
         _ok("dung the gioi va dat xe", f"{s.R} xe")
     except Exception as e:
         _fail("dung the gioi va dat xe", e)
         return 1
+
+    la = ops.dtype_audit(s) + ops.dtype_audit(s.w)
+    if la:
+        print("  [ KHONG ] kieu so cua mang: " +
+              ", ".join(f"{k} la {t}" for k, t in la))
+        print("            (phai la 32 bit; 64 bit thi card lien chiu)")
+        bad += 1
+    else:
+        _ok("kieu so cua moi mang", "32 bit het")
 
     # Gom tia vao quat khi CHUA CO VONG QUET NAO: day la trang thai xe vua
     # bat len, va no khac han trang thai sau khi da quet - dung du lieu
@@ -177,6 +187,12 @@ def _four(dev, pop, PC, bad, run, dev_key=None, retry=True):
                      lambda: ro.reset(11, 0.3), dev)
     if not good:
         return _thu_cach_khac(dev_key, retry, pop)
+    la = ops.dtype_audit(ro.sim) + ops.dtype_audit(ro.sim.w)
+    if la:
+        print("  [ KHONG ] kieu so cua mang: " +
+              ", ".join(f"{k} la {t}" for k, t in la))
+        return _thu_cach_khac(dev_key, retry, pop)
+    _ok("kieu so cua moi mang", "32 bit het")
     _, good = _stage("ban tia mot buoc", lambda: ro.sim.lidar_step(), dev)
     if not good:
         return _thu_cach_khac(dev_key, retry, pop)

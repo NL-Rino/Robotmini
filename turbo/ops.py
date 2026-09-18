@@ -142,7 +142,8 @@ def fan_min(idx, val, n_bins, fill, device):
         mode = "scatter" if caps(device)["scatter_reduce"] else "loop"
 
     if mode == "scatter":
-        out = torch.full((val.shape[0], n_bins), fill, device=device)
+        out = torch.full((val.shape[0], n_bins), fill,
+                         dtype=val.dtype, device=device)
         return out.scatter_reduce(1, idx, val, reduce="amin",
                                   include_self=True)
 
@@ -151,7 +152,7 @@ def fan_min(idx, val, n_bins, fill, device):
         # thanh RAM voi CPU nen chuyen qua lai khong dat nhu card roi, va
         # duong nay chi cap phat 2 mang thay vi 25.
         i, v = idx.cpu(), val.cpu()
-        out = torch.full((v.shape[0], n_bins), fill)
+        out = torch.full((v.shape[0], n_bins), fill, dtype=v.dtype)
         return out.scatter_reduce(1, i, v, reduce="amin",
                                   include_self=True).to(device)
 
@@ -159,6 +160,21 @@ def fan_min(idx, val, n_bins, fill, device):
     cols = [torch.where(idx == f, val, big).min(dim=1).values
             for f in range(n_bins)]
     return torch.stack(cols, dim=1)
+
+
+def dtype_audit(obj):
+    """Tensor nao trong `obj` co kieu la. Tra ve danh sach (ten, kieu).
+
+    Kieu dung la: so thuc 32 bit, dung/sai, so nguyen. Bat cu cai gi 64 BIT
+    deu la lo: card lien khong lam duoc nhieu phep tren 64 bit, va no bao
+    loi bang mot cau "unknown error" khong chi cho nao.
+    """
+    ok = (torch.float32, torch.bool, torch.int64, torch.int32, torch.uint8)
+    out = []
+    for k, v in sorted(vars(obj).items()):
+        if torch.is_tensor(v) and v.dtype not in ok:
+            out.append((k, str(v.dtype).replace("torch.", "")))
+    return out
 
 
 def put_rows(dst, idx, src):

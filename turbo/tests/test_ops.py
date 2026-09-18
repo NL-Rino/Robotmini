@@ -170,6 +170,48 @@ class TestNoScalarAssign(unittest.TestCase):
                                  + "\n  ".join(dict.fromkeys(bad)))
 
 
+class TestNoFloat64(unittest.TestCase):
+    """Khong duoc de lot mot mang SO THUC 64 BIT nao.
+
+    Card lien khong lam duoc nhieu phep tren 64 bit va no bao loi bang mot
+    cau "unknown error" khong chi cho nao ca. Da mat nhieu vong vi dung mot
+    dong: `torch.full(..., 8.0, device=...)` khong ghi `dtype` thi tren
+    card lien ra 64 bit. Te hon nua, loi do chi hien ra o xe VUA DAT LAI:
+    quet xong mot vong la mang do bi thay bang ban 32 bit va loi bien mat.
+    """
+
+    def test_trang_thai_deu_32_bit(self):
+        ro = Rollout([3, 5], 3, 2, DEV_CPU, seed=1)
+        ro.reset(11, 0.3)
+        self.assertEqual(ops.dtype_audit(ro.sim), [])
+        self.assertEqual(ops.dtype_audit(ro.sim.w), [])
+        # NGAY SAU khi dat lai, chua quet vong nao - day la luc de lot nhat
+        self.assertEqual(ro.sim.fans().dtype, torch.float32)
+
+    def test_ca_vong_chay_khong_sinh_64_bit(self):
+        from turbo import perception as PC
+
+        class Bat(torch.overrides.TorchFunctionMode):
+            def __torch_function__(self, func, types, args=(), kwargs=None):
+                out = func(*args, **(kwargs or {}))
+                xs = out if isinstance(out, (tuple, list)) else (out,)
+                for x in xs:
+                    if torch.is_tensor(x) and x.dtype == torch.float64:
+                        raise AssertionError(
+                            f"{getattr(func, '__name__', func)} sinh ra so "
+                            f"thuc 64 bit")
+                return out
+
+        ro = Rollout([3], 3, 2, DEV_CPU, seed=2)
+        pol = BatchPolicy(12, DEV_CPU)
+        th = torch.randn(2, pol.n_params, generator=
+                         torch.Generator().manual_seed(4)) * 0.2
+        with Bat():
+            ro.reset(21, 0.4)
+            self.assertEqual(PC.build(ro.sim, ro.docks).dtype, torch.float32)
+            ro.run(pol, th, 30, collect_obs=False)
+
+
 class TestDevicePicker(unittest.TestCase):
 
     def test_luon_co_CPU(self):

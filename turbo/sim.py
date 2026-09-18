@@ -131,7 +131,14 @@ class BatchSim:
         self.lox = torch.zeros(self.R, N_LIDAR, device=device)
         self.loy = torch.zeros(self.R, N_LIDAR, device=device)
         self.loth = torch.zeros(self.R, N_LIDAR, device=device)
-        self.scan_r = torch.full((self.R, N_LIDAR), P.LIDAR_MAX, device=device)
+        # `dtype` phai ghi RO. `torch.full` voi mot so Python tren card lien
+        # ra so thuc 64 BIT, va card do khong lam duoc `clamp` tren 64 bit.
+        # Cai buoc mo phong dau tien chet la vi day: chua quet xong vong nao
+        # thi `scan_r` van la mang goc nay, quet xong mot vong thi
+        # `_finish_scan` thay no bang mang 32 bit - nen loi chi hien ra o xe
+        # VUA DAT LAI, va bien mat sau mot vong quet.
+        self.scan_r = torch.full((self.R, N_LIDAR), P.LIDAR_MAX,
+                                 dtype=torch.float32, device=device)
         self.scan_b = torch.zeros(self.R, N_LIDAR, device=device)
         self.scan_ok = torch.zeros(self.R, N_LIDAR, dtype=torch.bool,
                                    device=device)

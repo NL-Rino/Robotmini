@@ -224,6 +224,30 @@ thong, chon *Pause syncing*, roi cai lai.
 - Van khong duoc thi cu chay bang CPU. Khong mat gi ca: cung mot chuong
   trinh, cung mot bo nao, cung mot khuon file.
 
+## Cai bay lon nhat: so thuc 64 bit
+
+Card lien khong lam duoc nhieu phep tren so thuc 64 bit, va no bao loi bang
+dung mot cau:
+
+    RuntimeError: unknown error
+
+Khong ten phep, khong dong, khong gi ca. Cho sinh ra 64 bit cung khong ngo:
+
+    torch.full((R, N), 8.0, device=may)      -> 64 BIT tren card lien
+    torch.full((R, N), 8.0, dtype=torch.float32, device=may)   -> dung
+
+Tren CPU thi `torch.full` lay kieu mac dinh (32 bit) nen khong ai thay gi;
+tren card lien no lay kieu cua chinh con so Python, ma so Python la 64 bit.
+
+Loi nay da lam mat nhieu vong do mot ly do nua: no CHI hien ra o xe vua dat
+lai. Quet xong mot vong LiDAR la mang do bi thay bang ban 32 bit va loi bien
+mat - nen chay thu 40 buoc thi qua, ma bat dau mot lan danh gia moi thi chet.
+
+Gio `turbo/tools/check.py` co mot muc soi kieu so cua MOI mang trong mo
+phong va bao ngay neu co cai nao khong phai 32 bit. Va co hai bai kiem thu
+chan: mot bai soi trang thai, mot bai chay ca vong va bao loi neu co BAT KY
+phep nao sinh ra 64 bit.
+
 ## Vi sao no chay duoc tren card lien
 
 Card lien thieu phep hon card roi. Bon cho tung phai sua:
@@ -235,6 +259,9 @@ Card lien thieu phep hon card roi. Bon cho tung phai sua:
 | `max_pool1d` | hay thieu | bang thua (log2 buoc) |
 | bo sinh so ngau nhien rieng | khong co | sinh tren CPU roi chuyen sang |
 | so thuc 64 bit | khong co | cong don 32 bit, doi ve 64 o CPU |
+| `clamp` tren 64 bit | khong co | ghi ro `dtype=torch.float32` luc tao mang |
+| `%` tren so thuc | hay thieu | cong/tru mot vong |
+| `clamp` tren so nguyen | hay thieu | clamp truoc khi ep kieu |
 
 Ba cach viet dau lai **nhanh hon** cach cu ngay tren CPU (`cumprod` nhanh
 gap 9 lan `cummin`, bang thua nhanh gap 3,5 lan `max_pool1d`), nen chung
