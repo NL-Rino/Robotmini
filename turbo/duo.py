@@ -68,7 +68,7 @@ class Duo:
 
     # ------------------------------------------------------------------
     def run(self, map_seeds, robots, n_pop, crn_seed, progress, theta,
-            steps, norm, station_drift=2.5):
+            steps, norm, station_drift=2.5, do_toc_do=True):
         """Cham diem ca quan the. `theta` la (n_pop, n_params) tren CPU.
 
         Tra ve (diem (n_pop,), (tong_quan_sat, tong_binh_phuong, so_mau),
@@ -129,12 +129,13 @@ class Duo:
         st = {}
         for k in out[song[0]][4]:
             st[k] = sum(out[i][4][k] * share[i] for i in song) / max(1, n_pop)
-        for i in song:
-            # trung binh truot, cho khoi nhay theo mot lan do xui
-            r = out[i][5]
-            self.rate[i] = r if self.rate[i] is None \
-                else 0.6 * self.rate[i] + 0.4 * r
-            self.last[i] = out[i][6]
+        if do_toc_do:
+            for i in song:
+                # trung binh truot, cho khoi nhay theo mot lan do xui
+                r = out[i][5]
+                self.rate[i] = r if self.rate[i] is None \
+                    else 0.6 * self.rate[i] + 0.4 * r
+                self.last[i] = out[i][6]
         return sc, (osum, osq, on), st, share
 
     # ------------------------------------------------------------------

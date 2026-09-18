@@ -111,11 +111,18 @@ ban lam viec khac.
 hoac bam `chay_dml.bat cahai`. Lenh do do ba lan tren cung mot quan the:
 card mot minh, CPU mot minh, roi ca hai - nen ba con so so thang duoc.
 
-Chon o o "Chay bang" thi lay muc **"CA HAI - <ten card> + CPU"**.
+### Do tren HD 620: CHAM HON
 
-Luu y: hai may tranh nhau duong truyen bo nho va tranh nhau ca CPU (card
-lien can CPU de day lenh xuong). Co hon hay khong thi phai DO. Neu khong
-hon, thu `--threads 1` de chua cho phan day lenh tho.
+    chi card lien       975 buoc-xe/giay
+    chi CPU           1.887
+    CA HAI cung lam   1.088      <- cham hon CPU mot minh
+
+Ly do: card LIEN can chinh CPU de day lenh xuong, ma may do chi co 2 nhan
+that. Hai ben tranh nhau nhan, va ben thua nhieu hon la ben dang lam phan
+lon cong viec.
+
+Nen muc "CA HAI" **chi dang chon khi card MANH HON CPU** - tuc la card
+roi. Voi card lien thi chon CPU.
 
 ## Vay chon cai nao
 

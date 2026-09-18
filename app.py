@@ -109,6 +109,32 @@ def _engines():
              "chua cai PyTorch nen khong co muc chay theo lo")]
 
 
+def train_command(mod, dev_key, run_dir, hidden, cfg, resume=False,
+                  init=None):
+    """Dung dong lenh cho tien trinh huan luyen.
+
+    De o day, ngoai lop giao dien, de con kiem thu duoc: may nao khong co
+    Tkinter (may chu thue chang han) van goi duoc ham nay.
+    """
+    args = [sys.executable, "-u", "-m", mod,
+            "--out", run_dir, "--hidden", str(hidden),
+            "--pop", str(cfg["pop"]), "--steps", str(cfg["steps"]),
+            "--robots", str(cfg["robots"]), "--gens", str(cfg["gens"]),
+            "--curriculum-gens", str(cfg["curriculum_gens"])]
+    if mod == "turbo.train":
+        # Ban theo lo khong chia viec cho tien trinh nao ca: ca quan the nam
+        # trong mot phep tinh, nen "So luong" khong con nghia gi.
+        args += ["--maps", str(cfg["episodes"]), "--device", dev_key or "cpu"]
+    else:
+        args += ["--episodes", str(cfg["episodes"]),
+                 "--jobs", str(cfg["jobs"])]
+    if resume:
+        args += ["--resume", run_dir]
+    elif init:
+        args += ["--init", init]
+    return args
+
+
 def button(parent, text, cmd, kind="normal", width=None):
     colors = {"normal": (ACC, "#0b1220"), "stop": (BAD, "#1a0c0c"),
               "ghost": (PANEL, FG), "go": (GOOD, "#08160f")}
@@ -571,27 +597,14 @@ class TrainScreen(Screen):
         for label, m, d, _tip in self.engines:
             if label == self.engine.get():
                 mod, dev_key = m, d
-        args = [sys.executable, "-u", "-m", mod,
-                "--out", self.run_dir, "--hidden", str(self.hidden),
-                "--pop", str(cfg["pop"]), "--steps", str(cfg["steps"]),
-                "--robots", str(cfg["robots"]), "--gens", str(cfg["gens"]),
-                "--curriculum-gens", str(cfg["curriculum_gens"])]
-        if mod == "turbo.train":
-            # Ban theo lo khong chia viec cho tien trinh nao ca: ca quan the
-            # nam trong mot phep tinh, nen "So luong" khong con nghia gi.
-            args += ["--maps", str(cfg["episodes"]), "--device", dev_key]
-        else:
-            args += ["--episodes", str(cfg["episodes"]),
-                     "--jobs", str(cfg["jobs"])]
+        resume = False
         if os.path.exists(state):
-            if messagebox.askyesno("Chay tiep?",
-                                   f"Da co {state}.\n\nChay tiep tu do "
-                                   f"(Co) hay bat dau lai tu dau (Khong)?"):
-                args += ["--resume", self.run_dir]
-            elif self.brain_path:
-                args += ["--init", self.brain_path]
-        elif self.brain_path:
-            args += ["--init", self.brain_path]
+            resume = messagebox.askyesno(
+                "Chay tiep?", f"Da co {state}.\n\nChay tiep tu do (Co) "
+                              f"hay bat dau lai tu dau (Khong)?")
+        args = train_command(mod, dev_key, self.run_dir, self.hidden, cfg,
+                             resume=resume,
+                             init=None if resume else self.brain_path)
 
         self.status_pos = 0
         self.history = []

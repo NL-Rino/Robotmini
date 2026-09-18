@@ -272,7 +272,10 @@ def measure_duo(spec="dml,cpu", pop=64, steps=150, robots=3, maps=1,
 
     def chay(ds, nhan):
         d = Duo(ds, hidden, threads_cpu=threads)
-        d.run(seeds, robots, pop, 11, 0.3, th.clone(), 5, norm)   # lam nong
+        # Lam nong: KHONG cho lan nay dat ti le chia, vi 5 buoc thi phan
+        # dung the gioi an het thoi gian va so do ra la rac.
+        d.run(seeds, robots, pop, 11, 0.3, th.clone(), 5, norm,
+              do_toc_do=False)
         t = time.perf_counter()
         d.run(seeds, robots, pop, 11, 0.3, th.clone(), steps, norm)
         dt = time.perf_counter() - t

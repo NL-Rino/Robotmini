@@ -197,12 +197,20 @@ def engines():
     De o day chu khong o `app.py` de con kiem thu duoc: may nao khong co
     Tkinter (may chu thue chang han) van chay ham nay duoc.
     """
-    tips = {"cuda": "card roi - de quan the that to (128, 256, 512)",
-            "xpu": "card Intel doi moi - thu quan the 64 tro len",
-            "dml": "card lien, dung chung RAM voi CPU - nhanh len it thoi",
-            "cpu": "chi hon khi quan the tu 64 tro len"}
+    # Ghi chu lay tu SO DO THAT tren may i5-7200U + HD 620 (18/09/2026):
+    #   tung xe mot (4 tien trinh) 1.920 buoc-xe/giay
+    #   ca lo tren CPU             1.778
+    #   ca lo tren card lien         952
+    #   ca hai cung lam            1.088   <- cham hon CPU mot minh
+    tips = {
+        "cuda": "card roi - de quan the that to (128, 256, 512)",
+        "xpu": "card Intel doi moi - thu quan the 64 tro len",
+        "mps": "GPU cua Mac - thu quan the 64 tro len",
+        "dml": "card lien dung chung RAM voi CPU; do truoc bang chay_dml.bat",
+        "cpu": "gan bang 'tung xe mot'; hon khi quan the tu 128 tro len",
+    }
     out = [("tung xe mot - CPU, nhieu tien trinh", "train.train", None,
-            "chac an; quan the nho thi day la nhanh nhat")]
+            "chac an; may khong co card roi thi day thuong la nhanh nhat")]
     devs = list_devices()
     for d in devs:
         kind = d.get("kind", "cpu")
@@ -213,14 +221,23 @@ def engines():
     gpu = [d for d in devs if d.get("kind", "cpu") != "cpu"]
     if gpu:
         g = gpu[0]
+        roi = g.get("kind") == "cuda"
         out.append((f"CA HAI - {g['name']} + CPU", "turbo.train",
                     f"{g['key']},cpu",
-                    "chia quan the cho ca hai, ti le tu dieu chinh"))
-    # Card manh len dau - do la ly do ban theo lo ton tai. May khong co card
-    # thi "tung xe mot" len dau, vi no van la cai nhanh hon o quan the nho.
-    rank = {"cuda": 0, "xpu": 1, "mps": 1, "dml": 2, "cpu": 4}
-    keys = {d["key"]: rank.get(d.get("kind", "cpu"), 4) for d in list_devices()}
-    out.sort(key=lambda e: keys.get(e[2], 9) if e[2] else 3)
+                    "chia quan the cho ca hai" if roi else
+                    "card lien thuong CHAM HON - hai may tranh nhau CPU"))
+
+    # Thu tu: cai nhanh nhat len dau, vi app.py lay muc dau lam mac dinh.
+    def hang(e):
+        key = e[2] or ""
+        if e[1] == "train.train":
+            return 3
+        if "," in key:
+            return 1 if key.startswith("cuda") else 6
+        kind = key.split(":")[0]
+        return {"cuda": 0, "xpu": 2, "mps": 2, "cpu": 4}.get(kind, 5)
+
+    out.sort(key=hang)
     return out
 
 
