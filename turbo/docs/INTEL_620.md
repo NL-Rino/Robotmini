@@ -159,28 +159,31 @@ So hai con so `buoc-xe/giay` voi nhau. Cai nao lon hon thi chon cai do o o
 
 ## Do duoc that tren HD 620 (18/09/2026)
 
-Chay duoc het. Toc do:
+Chay duoc het muc 1 den muc 6. Toc do, kem trang thai card luc do:
 
-| quan the | xe cung luc | buoc-xe/giay |
-|---:|---:|---:|
-| 16 | 48 | 220 |
-| 64 | 192 | 853 |
+| quan the | xe cung luc | buoc-xe/giay | tang | GPU 3D | bo nho chung |
+|---:|---:|---:|---|---:|---:|
+| 16 | 48 | 350 | | 2-8% | 0,2 GB |
+| 64 | 192 | 862 | 2,5 lan khi xe gap 4 | | |
+| 256 | 768 | 1.315 | 1,5 lan khi xe gap 4 | 84% | 1,2/1,9 GB |
 
-Va Task Manager luc do: **GPU 3D chay 2-8%**. Card gan nhu nam khong.
+Doc bang nay tu trai sang phai:
 
-Do la dau hieu ro rang cua mot thu: khong phai card yeu, ma la **tien goi
-phep**. Moi lan PyTorch goi mot phep len DirectML, no phai dung mot doi
-tuong DirectML roi day xuong hang doi - mat khoang nua mili giay, BAT KE
-mang to hay nho. Mot buoc mo phong goi vai tram phep, nen o lo nho thi
-99% thoi gian la tien goi, con phep tinh that thi xong trong nhay mat.
+**O lo NHO, card nam khong (3D chi 2-8%).** Do khong phai card yeu ma la
+tien goi phep: moi lan PyTorch goi mot phep len DirectML, no phai dung mot
+doi tuong DirectML roi day xuong hang doi - mat khoang nua mili giay BAT
+KE mang to hay nho. Mot buoc mo phong goi vai tram phep, nen o lo nho thi
+gan het thoi gian la tien goi.
 
-Bang chung: 4 lan so xe -> gan dung 4 lan toc do (220 -> 853). Neu card
-dang phai TINH that thi gap 4 lan xe se KHONG duoc gap 4 lan toc do. Tang
-tuyen tinh nhu vay nghia la moi buoc van mat dung tung ay thoi gian, chi
-la lam duoc nhieu viec hon trong do.
+**O lo TO, card da lam viec that (3D 84%)** va duong cong bat dau chung
+lai: gap 4 lan xe chi con duoc 1,5 lan toc do. Bo nho chung cung da len
+1,2 trong 1,9 GB, tuc la quan the 512 gan nhu chac chan khong vua.
 
-**Nen: lo cang to cang duoc gia, va gan nhu duoc khong.** `chay_dml.bat do`
-do toi quan the 256 de xem no thang den dau.
+Nen **tran cua HD 620 trong bai nay la khoang 1.300 buoc-xe/giay**, dat o
+quan the 256. Lo to hon nua khong con cho.
+
+Con no co hon CPU cua chinh may do khong thi phai do canh nhau:
+`chay_dml.bat do`.
 
 ## Toi doan no nhanh hon bao nhieu
 
