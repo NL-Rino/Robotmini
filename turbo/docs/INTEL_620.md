@@ -182,6 +182,38 @@ lai: gap 4 lan xe chi con duoc 1,5 lan toc do. Bo nho chung cung da len
 Nen **tran cua HD 620 trong bai nay la khoang 1.300 buoc-xe/giay**, dat o
 quan the 256. Lo to hon nua khong con cho.
 
+### Cach gom tia: do ra ket qua nguoc voi du doan
+
+O quan the 64, ba cach gom tia vao quat:
+
+| cach | goi bao nhieu phep | buoc-xe/giay |
+|---|---:|---:|
+| `loop` (duong vong tren card) | ~48 | 754 |
+| `scatter` (card thieu, PyTorch nho CPU) | ~2 | 883 |
+| `cpu` (tu chuyen sang CPU roi ve) | ~4 | **930** |
+
+Truoc do toi chon `loop` theo mot suy luan nghe rat hop ly: "chay nho CPU
+thi phai chep qua chep lai, tranh di". SAI. Cho nghen tren card lien la SO
+LAN GOI PHEP, khong phai so lan chep du lieu - ma `loop` goi 48 phep con
+`cpu` chi goi 4. Chep 96 KB qua lai re hon 44 lan goi phep.
+
+Gio `auto` chon `cpu` khi card khong co `scatter_reduce` that.
+
+### Con mot phep nua dang am tham nho CPU
+
+Trong nhat ky co mot dong:
+
+    UserWarning: The operator 'aten::index_copy.out' is not currently
+    supported on the DML backend and will fall back to run on the CPU.
+
+`index_copy_` - va no khong chi o cho dat xe. `lidar_step` goi no NAM LAN
+MOI BUOC de ghi cac diem vua ban vao bo dem. Da bo het:
+
+  - Ghi bo dem LiDAR: cac o can ghi luon lien tiep (chi vong qua 0 mot lan
+    moi vong quet), nen cat lam mot hoac hai doan roi `narrow` + `copy_`.
+  - Dat xe: dat HET ca lo la truong hop thuong gap, va luc do khong can chi
+    so gi ca - `copy_` va `fill_` la du.
+
 Con no co hon CPU cua chinh may do khong thi phai do canh nhau:
 `chay_dml.bat do`.
 

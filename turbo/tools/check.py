@@ -486,6 +486,15 @@ def _fallbacks(s, dev, bp, pr, h, v):
     with warnings.catch_warnings(record=True) as got:
         warnings.simplefilter("always")
         try:
+            # Ke ca DAT LAI XE: cho do chi chay mot lan moi the he, nhung
+            # truoc day no goi mot phep ma card lien phai nho CPU, va vong
+            # lap buoc o duoi khong he cham toi no.
+            p2 = s.w.home_pose()
+            s.place(torch.arange(s.R).to(dev),
+                    p2[:, 0] + 0.8 * torch.cos(p2[:, 2]),
+                    p2[:, 1] + 0.8 * torch.sin(p2[:, 2]), p2[:, 2],
+                    battery=torch.full((s.R,), 0.5,
+                                       dtype=torch.float32).to(dev))
             for _ in range(12):
                 s.step(torch.zeros(s.R, 2, device=dev))
                 if s.lidar_step():

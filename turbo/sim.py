@@ -167,21 +167,43 @@ class BatchSim:
 
     # ------------------------------------------------------------------ dat xe
     def place(self, idx, x, y, th, battery=None, station=None, drift=0.0):
-        # `a[idx] = b` khong phai may nao cung lam duoc; `index_copy_` thi co.
+        # DAT HET CA LO la truong hop thuong gap nhat (moi the he mot lan),
+        # va luc do khong can chep theo chi so gi ca - chep thang la xong.
+        # Dieu do dang gia tren card lien: `index_copy_` o do khong co that,
+        # PyTorch am tham chep tensor sang CPU roi chep nguoc lai. `copy_`
+        # va `fill_` thi may nao cung co.
+        full = int(idx.numel()) == self.R
+
+        def dat(a, v):
+            if full:
+                a.copy_(v)
+            else:
+                a.index_copy_(0, idx, v)
+
+        def xoa(a, val):
+            if full:
+                a.fill_(val)
+            else:
+                a.index_fill_(0, idx, val)
+
         th = wrap(th)
         for a, v in ((self.x, x), (self.y, y), (self.th, th),
                      (self.ox, x), (self.oy, y), (self.oth, th)):
-            a.index_copy_(0, idx, v)
+            dat(a, v)
         for a in (self.vl, self.vr, self.cmd, self.bump):
-            a.index_fill_(0, idx, 0.0)
+            xoa(a, 0.0)
         for a in (self.stranded, self.fallen, self.in_slot, self.id_ok,
                   self.charging):
-            a.index_fill_(0, idx, False)
+            xoa(a, False)
         if battery is not None:
-            self.batt.index_copy_(0, idx, battery)
-            self.low_lamp = ops.put_rows(self.low_lamp, idx,
-                                         battery < P.BATT_LOW)
-        hp = self.w.home_pose().index_select(0, idx)
+            dat(self.batt, battery)
+            if full:
+                self.low_lamp = battery < P.BATT_LOW
+            else:
+                self.low_lamp = ops.put_rows(self.low_lamp, idx,
+                                             battery < P.BATT_LOW)
+        hp = self.w.home_pose()
+        hp = hp if full else hp.index_select(0, idx)
         if station is None:
             station = hp
         if drift is not None and torch.is_tensor(drift):
@@ -192,13 +214,13 @@ class BatchSim:
                                    station[:, 1] + drift * torch.sin(ang),
                                    station[:, 2] + self.rng.randn(len(idx))
                                    * 0.12 * drift), dim=-1)
-        self.station.index_copy_(0, idx, station)
+        dat(self.station, station)
         # Dat lai xe la dat lai ca LiDAR: xe vua bat len thi chua thay gi.
         # Khong xoa thi vai buoc dau tien xe con nhin bang vong quet cua lan
         # danh gia TRUOC - mot can phong khac han.
-        self.lok.index_fill_(0, idx, False)
-        self.scan_ok.index_fill_(0, idx, False)
-        self.scan_r.index_fill_(0, idx, P.LIDAR_MAX)
+        xoa(self.lok, False)
+        xoa(self.scan_ok, False)
+        xoa(self.scan_r, P.LIDAR_MAX)
 
     # ------------------------------------------------------------------ vat ly
     def _circles(self):
@@ -399,13 +421,16 @@ class BatchSim:
         ok &= self._rand(d.shape[1]) >= P.LIDAR_DROP
         d = torch.round(d * 1000.0) / 1000.0
 
-        slot = (idx % N_LIDAR)
-        one = torch.ones(1, slot.numel(), device=self.device)
-        self.lr.index_copy_(1, slot, d)
-        self.lok.index_copy_(1, slot, ok)
-        self.lox.index_copy_(1, slot, self.ox[:, None] * one)
-        self.loy.index_copy_(1, slot, self.oy[:, None] * one)
-        self.loth.index_copy_(1, slot, self.oth[:, None] * one)
+        # Cac o can ghi luon LIEN TIEP (chi vong qua 0 mot lan moi vong
+        # quet), nen cat lam mot hoac hai doan roi chep thang. Truoc day cho
+        # nay dung `index_copy_` - phep ma card lien khong co that, va
+        # PyTorch am tham chep ca mang sang CPU roi chep nguoc lai, NAM LAN
+        # MOI BUOC.
+        self._ghi_cot(i0 % N_LIDAR, i1 - i0,
+                      ((self.lr, d), (self.lok, ok),
+                       (self.lox, self.ox[:, None]),
+                       (self.loy, self.oy[:, None]),
+                       (self.loth, self.oth[:, None])))
 
         if (i1 // N_LIDAR) > (i0 // N_LIDAR):
             self._rev += 1
@@ -413,6 +438,19 @@ class BatchSim:
             self.new_scan = True
             return True
         return False
+
+    def _ghi_cot(self, lo, n, cap):
+        """Ghi vao cac cot [lo, lo+n) vong tron, bang narrow + copy_."""
+        n1 = min(n, N_LIDAR - lo)
+        for a, v in cap:
+            if v.shape[1] == n:
+                a.narrow(1, lo, n1).copy_(v[:, :n1])
+                if n1 < n:
+                    a.narrow(1, 0, n - n1).copy_(v[:, n1:])
+            else:                       # (R,1): phat ra ca doan
+                a.narrow(1, lo, n1).copy_(v)
+                if n1 < n:
+                    a.narrow(1, 0, n - n1).copy_(v)
 
     def _finish_scan(self):
         ang = (torch.arange(N_LIDAR, device=self.device).float()

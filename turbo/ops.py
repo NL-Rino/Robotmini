@@ -139,7 +139,13 @@ def fan_min(idx, val, n_bins, fill, device):
     """Nho nhat cua `val` trong tung o `idx`. (R,N) -> (R,n_bins)."""
     mode = FAN_MODE
     if mode == "auto":
-        mode = "scatter" if caps(device)["scatter_reduce"] else "loop"
+        # Do tren HD 620 (quan the 64): cpu 930, scatter 883, loop 754
+        # buoc-xe/giay. Nghia la khi card KHONG co `scatter_reduce` that
+        # thi chuyen han sang CPU van hon di duong vong tren card - vi cho
+        # nghen la SO LAN GOI PHEP, ma duong vong goi 48 phep con chuyen
+        # sang CPU chi goi 4.
+        mode = "scatter" if caps(device)["scatter_reduce"] else (
+            "cpu" if torch.device(device).type != "cpu" else "loop")
 
     if mode == "scatter":
         out = torch.full((val.shape[0], n_bins), fill,
