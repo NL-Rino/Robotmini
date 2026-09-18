@@ -40,7 +40,8 @@ def _fail(name, err):
         print("            " + ln.rstrip())
 
 
-def check(dev, robots=48, quiet=False, only=None):
+def check(dev, robots=48, quiet=False, only=None, dev_key=None,
+          retry=True):
     robots = max(3, robots - robots % 3)
     pop = robots // 3
     run = set(only) if only else {1, 2, 3, 4, 5, 6}
@@ -72,7 +73,7 @@ def check(dev, robots=48, quiet=False, only=None):
     bw = s = dk = v = bp = pr = h = y = None
     if 2 not in run:
         print("\n2. Chay thu - bo qua")
-        return _four(dev, pop, PC, bad, run)
+        return _four(dev, pop, PC, bad, run, dev_key, retry)
 
     print("\n2. Chay thu")
     try:
@@ -139,7 +140,7 @@ def check(dev, robots=48, quiet=False, only=None):
 
     if 3 not in run:
         print("\n3. Phep nao dang phai nho CPU - bo qua")
-        return _four(dev, pop, PC, bad, run)
+        return _four(dev, pop, PC, bad, run, dev_key, retry)
 
     print("\n3. Phep nao dang phai nho CPU tinh ho")
     lag = _fallbacks(s, dev, bp, pr, h, v)
@@ -157,10 +158,10 @@ def check(dev, robots=48, quiet=False, only=None):
     # roi dung them mot lo nua la mot cach chac chan de no het cho.
     bw = s = dk = v = bp = pr = h = y = None
     gc.collect()
-    return _four(dev, pop, PC, bad, run)
+    return _four(dev, pop, PC, bad, run, dev_key, retry)
 
 
-def _four(dev, pop, PC, bad, run):
+def _four(dev, pop, PC, bad, run, dev_key=None, retry=True):
     print("\n4. Chay mot lan danh gia day du")
     print("   (moi buoc deu DOI cho card lam xong roi moi bao, de loi no")
     print("    dung cho gay ra chu khong no o cho sau)")
@@ -170,30 +171,30 @@ def _four(dev, pop, PC, bad, run):
     ro, good = _stage("dung lo the gioi",
                       lambda: Rollout([3], 3, pop, dev, seed=1), dev)
     if not good:
-        return 1
+        return _thu_cach_khac(dev_key, retry, pop)
     _, good = _stage("dat lai xe theo giao trinh",
                      lambda: ro.reset(11, 0.3), dev)
     if not good:
-        return 1
+        return _thu_cach_khac(dev_key, retry, pop)
     _, good = _stage("ban tia mot buoc", lambda: ro.sim.lidar_step(), dev)
     if not good:
-        return 1
+        return _thu_cach_khac(dev_key, retry, pop)
     _, good = _stage("gom tia vao quat", lambda: ro.sim.fans(), dev)
     if not good:
-        return 1
+        return _thu_cach_khac(dev_key, retry, pop)
     _, good = _stage("do vuc", lambda: ro.sim.cliff(), dev)
     if not good:
-        return 1
+        return _thu_cach_khac(dev_key, retry, pop)
     _, good = _stage("tiep dien", lambda: ro.sim.contact(), dev)
     if not good:
-        return 1
+        return _thu_cach_khac(dev_key, retry, pop)
     _, good = _stage("hong ngoai", lambda: ro.sim.ir_dock(), dev)
     if not good:
-        return 1
+        return _thu_cach_khac(dev_key, retry, pop)
     obs, good = _stage("dung 48 dau vao",
                        lambda: PC.build(ro.sim, ro.docks), dev)
     if not good:
-        return 1
+        return _thu_cach_khac(dev_key, retry, pop)
     bp2 = BP(16, dev)
     th2 = (torch.randn(pop, bp2.n_params) * 0.2).to(dev)
     st = bp2.new_state(pop, ro.unit)
@@ -201,21 +202,22 @@ def _four(dev, pop, PC, bad, run):
                      lambda: bp2.step(bp2.unpack(th2),
                                       obs.view(pop, ro.unit, -1), st), dev)
     if not good:
-        return 1
+        return _thu_cach_khac(dev_key, retry, pop)
     ev, good = _stage("mot buoc vat ly",
                       lambda: ro.sim.step(y[0].reshape(ro.sim.R, -1)), dev)
     if not good:
-        return 1
+        return _thu_cach_khac(dev_key, retry, pop)
     _, good = _stage("cham diem", lambda: ro.rw.step(ev), dev)
     if not good:
-        return 1
+        return _thu_cach_khac(dev_key, retry, pop)
     _, good = _stage("hai muoi buoc lien",
                      lambda: ro.run(bp2, th2, 20), dev)
     if not good:
-        return 1
+        return _thu_cach_khac(dev_key, retry, pop)
 
-    print("\n5. Nhanh cham the nao")
-    for n in (pop, 4 * pop):
+    if 5 in run:
+        print("\n5. Nhanh cham the nao")
+    for n in ((pop, 4 * pop) if 5 in run else ()):
         try:
             r2 = Rollout([3], 3, n, dev, seed=1)
             b2 = BP(16, dev)
@@ -265,6 +267,49 @@ def _four(dev, pop, PC, bad, run):
     print("\nChay duoc het. So o muc 5 cang lon cang tot. So voi ban "
           "'tung xe mot'\nbang lenh:  chay_dml.bat do")
     return 0
+
+
+def _thu_cach_khac(dev_key, retry, pop):
+    """Muc 4 hong -> tu chay lai muc 4 trong TIEN TRINH MOI theo vai cach.
+
+    Muc dich la tra loi mot cau duy nhat: hong vi PHEP TINH, hay vi da
+    dung qua nhieu tai nguyen truoc do? Tien trinh moi khong mang theo gi
+    cua lan truoc, nen neu chay rieng thi qua -> la tai nguyen.
+    """
+    if not retry or not dev_key:
+        return 1
+    import subprocess
+    print("\n   Thu lai muc 4 trong tien trinh MOI, theo vai cach:")
+    thu = [("chay rieng, khong co muc 2-3", []),
+           ("gom tia tren CPU", ["--fan", "cpu"]),
+           ("gom tia bang vong lap", ["--fan", "loop"]),
+           ("gom tia bang scatter", ["--fan", "scatter"]),
+           (f"lo nho hon ({max(3, pop // 4 * 3)} xe)",
+            ["--robots", str(max(3, pop // 4 * 3))])]
+    duoc = []
+    for ten, extra in thu:
+        cmd = [sys.executable, "-m", "turbo.tools.check", "--device", dev_key,
+               "--only", "4", "--no-retry"] + extra
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            ok = (r.returncode == 0)
+        except Exception:
+            ok = False
+        print(f"     [ {'duoc ' if ok else 'KHONG'} ] {ten}")
+        if ok:
+            duoc.append(ten)
+    print()
+    if not duoc:
+        print("   Cach nao cung hong -> khong phai tai nguyen, ma la mot")
+        print("   phep tinh card nay khong lam duoc. Gui ca trang nay lai.")
+    elif duoc == ["chay rieng, khong co muc 2-3"] or "chay rieng, khong co muc 2-3" in duoc:
+        print("   Chay RIENG thi qua -> card het cho khi phai giu nhieu thu")
+        print("   cung luc. Se sua bang cach tra bo nho som hon va dung lo")
+        print("   nho hon. Gui ca trang nay lai.")
+    else:
+        print("   Co cach chay duoc (xem dong 'duoc' o tren). Gui lai trang")
+        print("   nay, se dat cach do lam mac dinh cho card lien.")
+    return 1
 
 
 def _fallbacks(s, dev, bp, pr, h, v):
@@ -340,6 +385,8 @@ def main(argv=None):
                     help="cach gom tia vao quat - chi de thu khi may la")
     ap.add_argument("--only", default=None,
                     help="chi chay vai muc, vi du --only 4  hoac  --only 4,6")
+    ap.add_argument("--no-retry", action="store_true",
+                    help="hong thi thoi, dung tu thu lai cach khac")
     DEV.add_argument(ap)
     a = ap.parse_args(argv)
     ops.set_fan_mode(a.fan)
@@ -352,7 +399,9 @@ def main(argv=None):
     if not ok:
         print(f"  (khong co DirectML: {why})")
     dev = DEV.from_args(a)
-    return check(dev, robots=a.robots, only=only)
+    return check(dev, robots=a.robots, only=only,
+                 dev_key=getattr(a, "device", None),
+                 retry=not a.no_retry)
 
 
 if __name__ == "__main__":

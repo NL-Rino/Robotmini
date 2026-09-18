@@ -3,8 +3,11 @@ rem ===================================================================
 rem  Chay thu bang card lien. Cai xong roi thi dung file nay.
 rem  (Phai chay cai_dml_windows.bat mot lan truoc do.)
 rem
-rem    chay_dml.bat       -> thu xem may chay duoc den dau
-rem    chay_dml.bat do    -> do toc do card lien roi do lai tren CPU
+rem    chay_dml.bat              thu xem may chay duoc den dau
+rem    chay_dml.bat do           do toc do card lien roi do lai tren CPU
+rem    chay_dml.bat --only 4     chi chay muc 4
+rem    chay_dml.bat --fan cpu    thu cach gom tia khac
+rem  (moi thu khac deu duoc chuyen thang cho bo kiem tra)
 rem ===================================================================
 setlocal
 cd /d "%~dp0"
@@ -25,7 +28,8 @@ call "%VENV%\Scripts\activate.bat"
 
 if /i "%~1"=="do" goto doc
 
-python -m turbo.tools.check --device dml
+rem %* la MOI tham so ban go them, chuyen het cho bo kiem tra.
+python -m turbo.tools.check --device dml %*
 echo.
 echo Muon do toc do thi go:  chay_dml.bat do
 echo.
