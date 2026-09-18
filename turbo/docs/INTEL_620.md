@@ -214,8 +214,41 @@ MOI BUOC de ghi cac diem vua ban vao bo dem. Da bo het:
   - Dat xe: dat HET ca lo la truong hop thuong gap, va luc do khong can chi
     so gi ca - `copy_` va `fill_` la du.
 
-Con no co hon CPU cua chinh may do khong thi phai do canh nhau:
-`chay_dml.bat do`.
+### Card lien so voi chinh CPU cua may do
+
+Do canh nhau, cung bai, cung hat giong:
+
+| xe cung luc | card lien | CPU |
+|---:|---:|---:|
+| 48 | 415 | 1.480 |
+| 192 | 959 | 1.939 |
+| 768 | **1.348** | **1.921** |
+
+Va mot THE HE that (quan the 64, 115.200 buoc-xe):
+
+    card lien        121,0 s
+    CPU (theo lo)     64,8 s
+    CPU (tung xe mot) 60,0 s
+
+**CPU cua chinh may ban thang card lien 1,4 lan.** Do la ket qua dung nhu
+phan cung noi truoc: HD 620 dung chung thanh RAM voi CPU, ma cho nghen cua
+bai nay la duong truyen bo nho - card khong duoc them ti duong truyen nao,
+chi duoc them suc tinh toan tho ma bai nay khong thieu.
+
+Nen tren may nay, de huan luyen that thi chon CPU. Card lien co hai cai
+loi khac:
+
+  - Kiem duoc rang duong chay GPU thong tu dau den cuoi, trong khi chua
+    thue may. Thue A4000 xong chi viec doi `--device cuda`.
+  - Chay CUNG LUC voi CPU thi cong them duoc (xem duoi).
+
+### Ca hai cung lam
+
+    chay_dml.bat cahai
+
+Chia quan the cho ca card lan CPU, chay cung luc, ghep diem lai. Ti le tu
+dieu chinh theo toc do do duoc sau moi the he. Xem
+`turbo/docs/CHAY_BANG_GI.md` muc "Ca hai cung lam".
 
 ## Toi doan no nhanh hon bao nhieu
 

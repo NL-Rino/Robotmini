@@ -93,13 +93,37 @@ Mot dieu nen biet truoc: card lien **dung chung thanh RAM voi CPU**, ma cho
 nghen cua chuong trinh nay la duong truyen bo nho chu khong phai so phep
 tinh. Nen dung ky vong nhu card roi. Do di roi hay chon.
 
+## Ca hai cung lam
+
+ES cham diem moi ca the doc lap nhau, nen mot the he chia duoc cho nhieu
+may. Va cai lam cho viec do KHA THI o day la mot quyet dinh tu som: so ngau
+nhien sinh tren CPU roi moi chuyen sang may, cho dat xe tinh bang Python
+thuan, mat bang tat dinh theo hat giong. Nghia la **hai may khac nhau, cung
+mot hat giong, thay DUNG cung mot the gioi** - nen diem cua chung so sanh
+thang duoc voi nhau.
+
+Ti le chia TU DIEU CHINH: sau moi the he, may nao xong som hon thi the he
+sau duoc giao them. Khong phai doan truoc, va no tu bat kip khi may dang
+ban lam viec khac.
+
+    python -m turbo.tools.measure duo --device dml,cpu --pop 64 --maps 1
+
+hoac bam `chay_dml.bat cahai`. Lenh do do ba lan tren cung mot quan the:
+card mot minh, CPU mot minh, roi ca hai - nen ba con so so thang duoc.
+
+Chon o o "Chay bang" thi lay muc **"CA HAI - <ten card> + CPU"**.
+
+Luu y: hai may tranh nhau duong truyen bo nho va tranh nhau ca CPU (card
+lien can CPU de day lenh xuong). Co hon hay khong thi phai DO. Neu khong
+hon, thu `--threads 1` de chua cho phan day lenh tho.
+
 ## Vay chon cai nao
 
 - **Quan the duoi ~48, may khong co card**: chon "tung xe mot". Don gian
   hon va nhanh hon.
 - **Quan the tu ~64 tro len**: chon "ca lo mot luc", ke ca tren CPU.
 - **Co card do hoa**: chon "ca lo mot luc", va de quan the that to (128,
-  256, 512). Quan the to khong chi nhanh hon moi dong ho - no con lam
+  256, 512). Co ca card lan CPU ranh thi thu muc "CA HAI". Quan the to khong chi nhanh hon moi dong ho - no con lam
   gradient cua ES bot nhieu, tuc la moi the he di dung huong hon.
 - Muon doi giua hai cai: chon o o "Chay bang" trong man huan luyen. Hai ban
   ghi ra **cung mot khuon file**, nen dang chay dang do doi sang ban kia

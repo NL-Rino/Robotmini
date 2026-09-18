@@ -33,8 +33,36 @@ from train.policy import GRUPolicy
 from train.train import HOLDOUT, load_state, save_state
 
 from . import device as DEV
+from .duo import Duo
 from .policy import BatchPolicy
 from .rollout import Rollout
+
+
+def _devices(spec, quiet=False):
+    """`spec` co the la mot ten, mot torch.device, hay nhieu ten cach nhau
+    bang dau phay ("dml,cpu"). Nhieu ten thi quan the duoc chia cho ca lo."""
+    if isinstance(spec, torch.device):
+        return [spec]
+    if isinstance(spec, (list, tuple)):
+        return [d if isinstance(d, torch.device) else DEV.resolve(d)
+                for d in spec]
+    if spec and "," in str(spec):
+        out = []
+        for name in str(spec).split(","):
+            name = name.strip()
+            if not name:
+                continue
+            try:
+                out.append(DEV.resolve(name))
+            except Exception:
+                if not quiet:
+                    print(f"bo qua '{name}': may nay khong co")
+        if not out:
+            raise SystemExit("khong may nao trong danh sach dung duoc")
+        if not quiet:
+            print("chay tren: " + ", ".join(str(d) for d in out))
+        return out
+    return [DEV.pick(spec, quiet=quiet)]
 
 
 def _status(path, rec):
@@ -70,9 +98,9 @@ def _es_step(theta, eps, sp, sm, sigma, opt):
 def train(out="runs/gpu1", hidden=16, pop=64, sigma=0.05, lr=0.02,
           weight_decay=0.005, steps=600, robots=3, maps=2, gens=1000,
           resume=None, init=None, curriculum_gens=600, eval_every=20,
-          device=None, quiet=False, seed=0):
-    dev = device if isinstance(device, torch.device) else DEV.pick(device,
-                                                                   quiet=quiet)
+          device=None, quiet=False, seed=0, threads=None):
+    devs = _devices(device, quiet=quiet)
+    dev = devs[0]
     os.makedirs(out, exist_ok=True)
     status_path = os.path.join(out, "status.jsonl")
     stop_path = os.path.join(out, "STOP")
@@ -115,6 +143,7 @@ def train(out="runs/gpu1", hidden=16, pop=64, sigma=0.05, lr=0.02,
     n_pairs = max(1, pop // 2)
     n_pop = 2 * n_pairs
     bp = BatchPolicy(hidden, dev)
+    duo = Duo(devs, hidden, threads_cpu=threads)
     rng = np.random.default_rng(1234 + gen0)
     done = gen0
     hold = None
@@ -122,6 +151,9 @@ def train(out="runs/gpu1", hidden=16, pop=64, sigma=0.05, lr=0.02,
     if not quiet:
         print(f"quan the {n_pop}, moi ca the {maps * robots} xe "
               f"-> {n_pop * maps * robots} xe buoc cung luc")
+        if len(devs) > 1:
+            print("chia cho: " + ", ".join(str(d) for d in devs)
+                  + "  (ti le tu dieu chinh theo toc do do duoc)")
 
     try:
         for gen in range(gen0 + 1, gen0 + gens + 1):
@@ -136,28 +168,26 @@ def train(out="runs/gpu1", hidden=16, pop=64, sigma=0.05, lr=0.02,
             # dung cho dat xe nay, dung nhieu cam bien nay.
             map_seeds = [int(rng.integers(0, 2 ** 31 - 1)) for _ in range(maps)]
             crn = int(rng.integers(0, 2 ** 31 - 1))
-            ro = Rollout(map_seeds, robots, n_pop, dev, seed=crn)
-            ro.reset(crn, progress)
 
-            both, eps = _noise_matrix(pol.n_params, gen, n_pairs, dev)
+            both, eps = _noise_matrix(pol.n_params, gen, n_pairs, torch.device("cpu"))
             theta = torch.as_tensor(pol.theta, dtype=torch.float32
-                                    ).to(dev)[None, :] + sigma * both
-            bp.set_norm(*pol.norm.state()[:2])
-            sc, (osum, osq, on) = ro.run(bp, theta, steps)
-            sc = sc.cpu().double().numpy()
+                                    )[None, :] + sigma * both
+            sc, (osum, osq, on), st, share = duo.run(
+                map_seeds, robots, n_pop, crn, progress, theta, steps,
+                pol.norm.state()[:2])
+            sc = sc.double().numpy()
             sp, sm = sc[:n_pairs], sc[n_pairs:]
 
-            pol.theta, gnorm = _es_step(pol.theta, eps, sp, sm, sigma, opt)
+            pol.theta, gnorm = _es_step(pol.theta, eps.to("cpu"), sp, sm,
+                                        sigma, opt)
             pol._unpack()
 
             # Bo chuan hoa cap nhat O CUOI the he - trong mot the he ca quan
             # the phai dung chung mot bo, khong thi diem khong so sanh duoc.
             if on > 0:
-                bm = (osum / on).cpu().double().numpy()
-                bv = np.maximum((osq / on).cpu().double().numpy() - bm * bm, 0.0)
+                bm = (osum / on).numpy()
+                bv = np.maximum((osq / on).numpy() - bm * bm, 0.0)
                 pol.norm.update(bm, bv, on)
-
-            st = ro.stats()
             mean_score = float(sc.mean())
             rec = dict(gen=gen, score=round(mean_score, 2), sigma=sigma,
                        secs=round(time.time() - t0, 1),
@@ -167,6 +197,8 @@ def train(out="runs/gpu1", hidden=16, pop=64, sigma=0.05, lr=0.02,
                        wrong=round(st["wrong"], 2),
                        falls=round(st["falls"], 2), flats=round(st["flats"], 2),
                        beacons=round(st["beacons"], 2), engine="turbo")
+            if len(devs) > 1:
+                rec["chia"] = list(share)
 
             if gen % eval_every == 0 or gen == gen0 + 1:
                 if hold is None:
@@ -199,6 +231,8 @@ def train(out="runs/gpu1", hidden=16, pop=64, sigma=0.05, lr=0.02,
                     if rec.get("record"):
                         line += "  <- KY LUC"
                 print(line, flush=True)
+                if len(devs) > 1 and gen % 10 == 0:
+                    print("        " + duo.report(share), flush=True)
     finally:
         save_state(out, pol, opt, done, cfg, best)
     return out
@@ -233,14 +267,18 @@ def main(argv=None):
     ap.add_argument("--curriculum-gens", type=int, default=600)
     ap.add_argument("--eval-every", type=int, default=20)
     ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("--threads", type=int, default=None,
+                    help="so luong CPU cho phep torch dung")
     DEV.add_argument(ap)
     a = ap.parse_args(argv)
-    dev = DEV.from_args(a, quiet=a.quiet)
+    if getattr(a, "list_devices", False):
+        DEV.from_args(a)
+    dev = a.device
     train(out=a.out, hidden=a.hidden, pop=a.pop, sigma=a.sigma, lr=a.lr,
           weight_decay=a.weight_decay, steps=a.steps, robots=a.robots,
           maps=a.maps, gens=a.gens, resume=a.resume, init=a.init,
           curriculum_gens=a.curriculum_gens, eval_every=a.eval_every,
-          device=dev, quiet=a.quiet)
+          device=dev, quiet=a.quiet, threads=a.threads)
     return 0
 
 

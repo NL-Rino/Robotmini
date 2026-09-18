@@ -22,6 +22,7 @@ from sim import dock_detector as D1
 from sim.geometry import point_segment_distance, wrap_pi_scalar
 from sim.lidar import Scan
 from turbo import device as DEV, dock as D2, sim as TS, world as TW
+from turbo.policy import BatchPolicy
 
 MATCH = 0.30              # gan hoc hon the nay -> bao dung
 FAR = 0.80                # xa moi hoc hon the nay -> bao gia that su
@@ -247,9 +248,52 @@ def measure_scale(pops=(16, 32, 64, 128, 256), steps=150, robots=3, maps=1,
         print(f"{pop:9d} {ro.sim.R:12d} {steps * ro.sim.R / dt:14,.0f}")
 
 
+def measure_duo(spec="dml,cpu", pop=64, steps=150, robots=3, maps=1,
+                hidden=16, threads=None):
+    """Card + CPU cung lam: duoc bao nhieu so voi tung cai mot.
+
+    Do ba lan tren CUNG mot quan the va CUNG mot hat giong, nen ba con so
+    so sanh thang duoc voi nhau.
+    """
+    import numpy as _np
+    from turbo.duo import Duo
+    from turbo.train import _devices
+
+    devs = _devices(spec, quiet=True)
+    if len(devs) < 2:
+        print("Can it nhat hai may, vi du --device dml,cpu")
+        return
+    bp0 = BatchPolicy(hidden, torch.device("cpu"))
+    th = torch.randn(pop, bp0.n_params,
+                     generator=torch.Generator().manual_seed(9)) * 0.2
+    norm = (_np.zeros(48), _np.ones(48))
+    work = pop * maps * robots * steps
+    seeds = [3, 5][:maps] or [3]
+
+    def chay(ds, nhan):
+        d = Duo(ds, hidden, threads_cpu=threads)
+        d.run(seeds, robots, pop, 11, 0.3, th.clone(), 5, norm)   # lam nong
+        t = time.perf_counter()
+        d.run(seeds, robots, pop, 11, 0.3, th.clone(), steps, norm)
+        dt = time.perf_counter() - t
+        print(f"  {nhan:28s} {dt:6.1f} s  {work / dt:9,.0f} buoc-xe/giay")
+        return work / dt
+
+    print(f"quan the {pop} x {maps} mat bang x {robots} xe x {steps} buoc "
+          f"= {work:,} buoc-xe")
+    rieng = [chay([d], f"chi {d}") for d in devs]
+    ca = chay(devs, "CA HAI cung lam")
+    tot = max(rieng)
+    print(f"\n  -> ca hai nhanh gap {ca / tot:.2f} lan so voi may nhanh nhat"
+          f" chay mot minh")
+    if ca < tot:
+        print("     (khong hon: hai may dang tranh nhau duong truyen bo nho."
+              "\n      Thu --threads it hon de chua cho may kia tho.)")
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("what", choices=("detector", "speed", "scale"))
+    ap.add_argument("what", choices=("detector", "speed", "scale", "duo"))
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--pop", type=int, default=32)
     ap.add_argument("--steps", type=int, default=600)
@@ -259,12 +303,17 @@ def main():
                     choices=("auto", "scatter", "loop", "cpu"))
     ap.add_argument("--pops", default=None,
                     help="vi du --pops 16,64,256")
+    ap.add_argument("--threads", type=int, default=None)
     a = ap.parse_args()
     if a.what == "detector":
         measure_detector(device=a.device)
     elif a.what == "speed":
         measure_speed(pop=a.pop, steps=a.steps, device=a.device, maps=a.maps,
                       also_v1=not a.no_v1, fan=a.fan)
+    elif a.what == "duo":
+        measure_duo(spec=a.device, pop=a.pop, maps=a.maps,
+                    steps=a.steps if a.steps != 600 else 150,
+                    threads=a.threads)
     elif a.what == "scale":
         pops = ([int(x) for x in a.pops.split(",")] if a.pops
                 else (16, 32, 64, 128, 256))

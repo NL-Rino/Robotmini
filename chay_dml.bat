@@ -5,6 +5,7 @@ rem  (Phai chay cai_dml_windows.bat mot lan truoc do.)
 rem
 rem    chay_dml.bat              thu xem may chay duoc den dau
 rem    chay_dml.bat do           do toc do card lien roi do lai tren CPU
+rem    chay_dml.bat cahai        do card + CPU CUNG LAM so voi tung cai mot
 rem    chay_dml.bat --only 4     chi chay muc 4
 rem    chay_dml.bat --fan cpu    thu cach gom tia khac
 rem  (moi thu khac deu duoc chuyen thang cho bo kiem tra)
@@ -27,11 +28,22 @@ if not exist "%VENV%\Scripts\activate.bat" (
 call "%VENV%\Scripts\activate.bat"
 
 if /i "%~1"=="do" goto doc
+if /i "%~1"=="cahai" goto cahai
 
 rem %* la MOI tham so ban go them, chuyen het cho bo kiem tra.
 python -m turbo.tools.check --device dml %*
 echo.
 echo Muon do toc do thi go:  chay_dml.bat do
+echo.
+pause
+exit /b 0
+
+:cahai
+echo === Card lien + CPU cung lam, so voi tung cai mot ===
+python -m turbo.tools.measure duo --device dml,cpu --pop 64 --maps 1
+echo.
+echo Neu dong cuoi bao "khong hon" thi thu chua bot luong CPU lai:
+echo     python -m turbo.tools.measure duo --device dml,cpu --pop 64 --maps 1 --threads 1
 echo.
 pause
 exit /b 0

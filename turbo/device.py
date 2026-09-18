@@ -203,10 +203,19 @@ def engines():
             "cpu": "chi hon khi quan the tu 64 tro len"}
     out = [("tung xe mot - CPU, nhieu tien trinh", "train.train", None,
             "chac an; quan the nho thi day la nhanh nhat")]
-    for d in list_devices():
+    devs = list_devices()
+    for d in devs:
         kind = d.get("kind", "cpu")
         label = "ca lo mot luc - " + ("CPU" if kind == "cpu" else d["name"])
         out.append((label, "turbo.train", d["key"], tips.get(kind, "")))
+    # Card + CPU cung lam: ES chia viec duoc theo ca the, va hai may thay
+    # cung mot the gioi nen diem ghep lai duoc. Ti le tu dieu chinh.
+    gpu = [d for d in devs if d.get("kind", "cpu") != "cpu"]
+    if gpu:
+        g = gpu[0]
+        out.append((f"CA HAI - {g['name']} + CPU", "turbo.train",
+                    f"{g['key']},cpu",
+                    "chia quan the cho ca hai, ti le tu dieu chinh"))
     # Card manh len dau - do la ly do ban theo lo ton tai. May khong co card
     # thi "tung xe mot" len dau, vi no van la cai nhanh hon o quan the nho.
     rank = {"cuda": 0, "xpu": 1, "mps": 1, "dml": 2, "cpu": 4}
