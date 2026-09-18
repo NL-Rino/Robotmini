@@ -23,6 +23,7 @@ import warnings
 
 import torch
 
+from sim import params as P
 from turbo import device as DEV, ops
 
 def _ok(name, note=""):
@@ -194,6 +195,7 @@ def _four(dev, pop, PC, bad, run, dev_key=None, retry=True):
     obs, good = _stage("dung 48 dau vao",
                        lambda: PC.build(ro.sim, ro.docks), dev)
     if not good:
+        _deep_build(ro.sim, ro.docks, dev)
         return _thu_cach_khac(dev_key, retry, pop)
     bp2 = BP(16, dev)
     th2 = (torch.randn(pop, bp2.n_params) * 0.2).to(dev)
@@ -267,6 +269,117 @@ def _four(dev, pop, PC, bad, run, dev_key=None, retry=True):
     print("\nChay duoc het. So o muc 5 cang lon cang tot. So voi ban "
           "'tung xe mot'\nbang lenh:  chay_dml.bat do")
     return 0
+
+
+def _deep_build(sim, docks, dev):
+    """Tim cho card chet trong "dung 48 dau vao", theo hai buoc.
+
+    Den day thi da biet: khong phai het tai nguyen (chay rieng cung hong),
+    khong phai cach gom tia (ca ba cach deu hong). Con lai la mot phep cu
+    the, va viec con lai la chi dung ten no.
+
+    Buoc mot: chay chinh ham that, nhung chen mot cai moc sau moi khoi -
+    moc do doi cho card lam xong roi in ten khoi. Khoi cuoi cung IN RA la
+    khoi cuoi cung chay duoc; cho hong nam ngay sau no.
+
+    Buoc hai: neu hong o khoi dau (quat LiDAR), thu vai cach viet khac cua
+    chinh cho do, de biet nen doi sang cach nao.
+    """
+    from turbo import perception as PC2
+
+    print("\n   Di tung khoi mot trong 'dung 48 dau vao':")
+    xong = []
+
+    def hook(ten, x):
+        _touch(x)
+        _sync(dev)
+        lt = "" if (not torch.is_tensor(x) or x.is_contiguous()) \
+            else "  KHONG LIEN TUC"
+        print(f"     [ duoc  ] {ten}{lt}")
+        xong.append(ten)
+
+    PC2.STEP_HOOK = hook
+    try:
+        PC2.build(sim, docks)
+        print("     (lan nay ca ham lai chay duoc - loi khong on dinh)")
+        return
+    except Exception as e:
+        sau = xong[-1] if xong else "truoc khoi dau tien"
+        print(f"     [ KHONG ] khoi NGAY SAU '{sau}'")
+        print(f"               {type(e).__name__}: {e}")
+    finally:
+        PC2.STEP_HOOK = None
+
+    if xong:
+        return
+
+    # Hong ngay o khoi dau: cat nho ra nua.
+    print("\n   Khoi dau la 'quat LiDAR'. Cat nho ra:")
+
+    def step(name, fn):
+        try:
+            r = fn()
+            _touch(r)
+            _sync(dev)
+        except Exception as e:
+            print(f"     [ KHONG ] {name}")
+            print(f"               {type(e).__name__}: {e}")
+            return None, False
+        if torch.is_tensor(r):
+            lt = "" if r.is_contiguous() else "  KHONG LIEN TUC"
+            print(f"     [ duoc  ] {name:32s} {str(tuple(r.shape)):12s}"
+                  f" {str(r.dtype).replace('torch.', '')}{lt}")
+        else:
+            print(f"     [ duoc  ] {name}")
+        return r, True
+
+    v, ok = step("tao mang 48 dau vao",
+                 lambda: torch.zeros(sim.R, 48, device=dev))
+    if not ok:
+        return
+    f, ok = step("sim.fans()", lambda: sim.fans())
+    if not ok:
+        return
+
+    c, ok = step("clamp(0, 8)", lambda: f.clamp(0.0, P.LIDAR_MAX))
+    if not ok:
+        print("       -> thu cac cach viet khac cua chinh phep nay:")
+        fc, ok2 = step("  chep ra ban lien tuc",
+                       lambda: f.contiguous().clone())
+        if ok2:
+            c, ok = step("  clamp tren ban chep",
+                         lambda: fc.clamp(0.0, P.LIDAR_MAX))
+        if not ok:
+            c, ok = step("  clamp_min roi clamp_max",
+                         lambda: f.clamp_min(0.0).clamp_max(P.LIDAR_MAX))
+        if not ok:
+            c, ok = step("  minimum/maximum thay clamp",
+                         lambda: torch.minimum(
+                             torch.maximum(f, torch.zeros_like(f)),
+                             torch.full_like(f, P.LIDAR_MAX)))
+        if not ok:
+            c, ok = step("  cong 0 roi clamp",
+                         lambda: (f + 0.0).clamp(0.0, P.LIDAR_MAX))
+        if not ok:
+            return
+
+    d, ok = step("chia cho 8", lambda: c / P.LIDAR_MAX)
+    if not ok:
+        return
+    e, ok = step("1 - x", lambda: 1.0 - d)
+    if not ok:
+        return
+
+    def gan():
+        v[:, 0:P.N_LIDAR_FANS] = e
+        return v
+
+    _, ok = step("gan vao lat cat cua mang", gan)
+    if not ok:
+        def gan2():
+            v.narrow(1, 0, P.N_LIDAR_FANS).copy_(e)
+            return v
+        step("  copy_ vao narrow thay cho gan", gan2)
 
 
 def _thu_cach_khac(dev_key, retry, pop):

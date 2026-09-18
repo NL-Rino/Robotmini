@@ -21,6 +21,16 @@ from .ops import hypot
 N_INPUTS = P.N_INPUTS
 
 
+# Cho bo kiem tra chen vao de biet card chet o KHOI NAO. Chay binh thuong
+# thi day la None va khong ton gi.
+STEP_HOOK = None
+
+
+def _mark(ten, x=None):
+    if STEP_HOOK is not None:
+        STEP_HOOK(ten, x)
+
+
 def _range_feat(d, norm):
     return (1.0 - d.clamp(max=norm) / norm).clamp(min=0.0)
 
@@ -34,9 +44,13 @@ def build(sim, docks):
     v[:, I_FANS:I_FANS + P.N_LIDAR_FANS] = \
         1.0 - fans.clamp(0.0, P.LIDAR_MAX) / P.LIDAR_MAX
 
+    _mark("quat LiDAR", v)
+
     cl, cr = sim.cliff()
     v[:, I_CLIFF] = cl.float()
     v[:, I_CLIFF + 1] = cr.float()
+
+    _mark("cam bien vuc", v)
 
     for k in range(P.N_DOCK_CANDIDATES):
         b = I_DOCKS + 6 * k
@@ -51,11 +65,15 @@ def build(sim, docks):
         v[:, b + 4] = torch.where(on, torch.sin(axis), torch.zeros_like(sc))
         v[:, b + 5] = torch.where(on, torch.cos(axis), torch.zeros_like(sc))
 
+    _mark("ung vien hoc", v)
+
     for off, (seen, bear) in ((0, sim.ir_beacon()), (3, sim.ir_dock())):
         f = seen.float()
         v[:, I_IR + off + 0] = f
         v[:, I_IR + off + 1] = torch.sin(bear) * f
         v[:, I_IR + off + 2] = torch.cos(bear) * f
+
+    _mark("hong ngoai", v)
 
     # Bo nho tram: hieu hai so CUNG HE ODOM nen phan troi triet tieu.
     dx = sim.station[:, 0] - sim.ox
@@ -72,18 +90,25 @@ def build(sim, docks):
     v[:, I_STATION + 4] = torch.sin(axis_rel)
     v[:, I_STATION + 5] = torch.cos(axis_rel)
 
+    _mark("bo nho tram", v)
+
     v[:, I_BATTERY + 0] = sim.batt
     v[:, I_BATTERY + 1] = blink(sim.t, sim.low_lamp)
     v[:, I_BATTERY + 2] = sim.charging.float()
 
+    _mark("pin", v)
+
     v[:, I_CONTACT + 0] = sim.in_slot.float()
     v[:, I_CONTACT + 1] = sim.id_ok.float()
+
+    _mark("tiep dien", v)
 
     v[:, I_MOTION + 0] = (sim.v / P.V_MAX).clamp(-1.0, 1.0)
     v[:, I_MOTION + 1] = (sim.wv / P.W_MAX).clamp(-1.0, 1.0)
     v[:, I_MOTION + 2] = sim.cmd[:, 0]
     v[:, I_MOTION + 3] = sim.cmd[:, 1]
     v[:, I_MOTION + 4] = sim.bump
+    _mark("chuyen dong", v)
     return v
 
 
