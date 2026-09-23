@@ -6,7 +6,7 @@ chạy trên laptop. Đây là bản **làm lại phần mô phỏng** theo bố
 1. **Chạy mãi.** Không có tập, không có giới hạn số bước, không reset. Vòng
    lặp chỉ dừng khi **đứt kết nối bộ não**. Xe hết pin hay rơi xuống vực thì
    nằm im tại chỗ và thành vật cản của xe khác; thế giới vẫn chạy tiếp.
-2. **Bỏ hẳn lớp cưỡng ép về sạc.** Dưới 15% pin chỉ có **một đầu vào nhấp
+2. **Bỏ hẳn lớp cưỡng ép về sạc.** Dưới 20% pin chỉ có **một đầu vào nhấp
    nháy 0/1 liên tục** cho tới khi sạc lại. Nó chỉ nhấp nháy. Không lớp nào
    cướp quyền lái nữa — xe phớt lờ thì xe nằm đường.
 3. **Muốn sạc thì phải lùi đuôi vào hộc.** Chân tiếp điện nằm ở đuôi xe.
@@ -16,6 +16,15 @@ chạy trên laptop. Đây là bản **làm lại phần mô phỏng** theo bố
    ngoài giống hệt nhau. Chỉ khi đã lùi đuôi vào và chân tiếp điện chạm thì
    hộc mới phát (hoặc không phát) tín hiệu bắt tay. Cắm nhầm hộc của xe
    khác thì chạm được nhưng **không ra điện**, có cắm mạnh cũng vậy.
+
+**Bản "căn nhà" (mới nhất).** Nơi tập là một **căn nhà 12 × 9 m bốn phòng**
+có bàn ghế (dưới mắt LiDAR chỉ là chân ghế), người đi lại là **hai cái chân
+hiện ra rồi biến mất** theo nhịp bước. Đề bài: ăn đủ **5 chấm gọi** và sạc
+đủ **3 lần hợp lệ** (cắm lúc pin < 20%, nằm tới khi đầy 100% - chạy ra giữa
+chừng thì không tính). Tới chỗ LiDAR thấy khu vực mới thì được cộng điểm.
+Bộ não giờ đọc **64 đầu vào**, mạng mặc định **GRU 64 → 48 → 2**. Bộ não
+48 đầu vào cũ không dùng được nữa - tạo bộ não mới. Chi tiết:
+`docs/SIM.md` mục 0 và `docs/TRAIN.md` mục 0.
 
 ## Chạy
 
@@ -80,12 +89,14 @@ sim/
   dock_detector.py dò hộc bằng hình học (đo độ lõm + khớp thành trong)
   sensors.py       cảm biến vực, hồng ngoại 2 kênh, TIẾP ĐIỂM ĐUÔI + MÃ HỘC
   robot.py         động lực học, odometry, va chạm, pin, đèn báo sạc
-  perception.py    CHỖ DUY NHẤT dựng 48 đầu vào
+  perception.py    CHỖ DUY NHẤT dựng 64 đầu vào
+  house.py         căn nhà bốn phòng, bàn ghế, người đi lại
+  coverage.py      lưới ô 50 cm: chỗ nào LiDAR đã thấy
   fleet.py         vòng lặp nhiều xe, chạy tới khi mất não
 brain/rule_brain.py bộ luật viết tay — BẢN MẪU để xem, không phải giáo án
 link/               giao thức UDP, bộ não trên laptop, phía xe
 train/
-  policy.py        GRU 48 -> 16 -> 2 numpy thuần, kèm bộ chuẩn hoá đầu vào
+  policy.py        GRU 64 -> 48 -> 2 numpy thuần, kèm bộ chuẩn hoá đầu vào
   reward.py        hàm phần thưởng
   rollout.py       một lần đánh giá + GIÁO TRÌNH NGƯỢC
   es.py            tiến hoá: đối gương, xếp hạng, AdamW
@@ -94,7 +105,7 @@ tools/run_fleet.py  trình chạy + bản đồ ASCII
 tools/measure.py    đo lại: tỉ lệ về trạm, độ chính xác bộ dò, tốc độ, nhiễu
 tests/            71 bài (32 mô phỏng + 7 đường truyền + 21 huấn
                   luyện + 11 chống ăn gian trong trạm sạc)
-docs/SIM.md         thiết kế, 48 đầu vào, và các con số kèm lý do
+docs/SIM.md         thiết kế, 64 đầu vào, và các con số kèm lý do
 ```
 
 Chi tiết: [docs/SIM.md](docs/SIM.md) — thiết kế mô phỏng.

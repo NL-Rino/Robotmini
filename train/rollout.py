@@ -24,6 +24,16 @@ Va: cai hoc dung o pha "truoc-mieng"/"sap-cam" duoc chon NGAU NHIEN, nhieu
 khi khong phai hoc cua xe. Neu lan nao cung dat dung hoc cua no thi bo nao
 se hoc duoc rang cu cam la co dien, va se khong bao gio nhin toi tin hieu
 bat tay.
+
+DE BAI DAI, LAN DANH GIA NGAN. Lam xong de bai (5 cham goi + 3 lan sac hop
+le) mat vai phut mo phong, mot lan danh gia chi mot phut. Nen giao trinh con
+cap san TIEN DO: xe bat dau voi "da an k cham, da sac m lan" ngau nhien, va
+kha nang cao la chi con thieu mot hai viec. Nho vay phan thuong HOAN THANH
+cham duoc ngay tu nhung the he dau, va bo nao hoc duoc cac dau vao tien do
+(task_beacons, task_charges) co nghia gi.
+
+Pha moi "dang-sac": nam trong hoc cua minh, DANG trong mot lan sac hop le,
+pin moi len duoc nua chung. Day la cho hoc "dung co chay ra giua chung".
 """
 
 import math
@@ -38,11 +48,27 @@ from sim.world import make_fleet_map
 from .policy import PolicyBrain
 from .reward import RewardTracker
 
-PHASES = ("sap-cam", "truoc-mieng", "pin-yeu", "long-nhong", "trong-hoc")
+PHASES = ("sap-cam", "truoc-mieng", "pin-yeu", "long-nhong", "trong-hoc",
+          "dang-sac")
 
 # Suat cua tung pha o dau va o cuoi qua trinh huan luyen.
-MIX_EARLY = (0.34, 0.34, 0.16, 0.10, 0.06)
-MIX_LATE = (0.08, 0.17, 0.30, 0.25, 0.20)
+MIX_EARLY = (0.26, 0.26, 0.14, 0.14, 0.06, 0.14)
+MIX_LATE = (0.06, 0.14, 0.26, 0.32, 0.12, 0.10)
+
+
+def _task_progress(rng, progress):
+    """Tien do de bai cap san cho mot xe: (so cham da an, so lan da sac).
+
+    Dau huan luyen: phan lon chi con thieu mot viec. Cuoi huan luyen: bat
+    dau tu so 0 nhieu hon, de bo nao hoc ca chang duong dai.
+    """
+    p = min(1.0, max(0.0, float(progress)))
+    if rng.random() < 0.55 - 0.30 * p:
+        # gan xong: thieu mot cham HOAC mot lan sac
+        if rng.random() < 0.5:
+            return P.TASK_BEACONS - 1, P.TASK_CHARGES
+        return P.TASK_BEACONS, P.TASK_CHARGES - 1
+    return (rng.randint(0, P.TASK_BEACONS), rng.randint(0, P.TASK_CHARGES))
 
 
 def phase_mix(progress):
@@ -63,6 +89,7 @@ def _pick_phase(rng, mix):
 
 class RolloutResult:
     __slots__ = ("score", "charged", "wrong", "falls", "flats", "beacons",
+                 "charges_ok", "cells", "complete", "clawed",
                  "obs_sum", "obs_sqsum", "obs_n", "steps")
 
     def __init__(self):
@@ -72,13 +99,17 @@ class RolloutResult:
         self.falls = 0
         self.flats = 0
         self.beacons = 0
+        self.charges_ok = 0       # lan sac HOP LE (duoi 20% -> day 100%)
+        self.cells = 0            # o san nha moi nhin thay
+        self.complete = 0         # so xe lam xong de bai
+        self.clawed = 0.0         # tien tam ung bi thu lai (rut ra giua chung)
         self.obs_sum = None
         self.obs_sqsum = None
         self.obs_n = 0
         self.steps = 0
 
 
-def _place(sim, rng, mix, station_drift):
+def _place(sim, rng, mix, station_drift, progress=0.0):
     """Dat tung xe vao mot pha, moi xe mot cai hoc khac nhau."""
     docks = [d for d in sim.world.docks]
     rng.shuffle(docks)
@@ -90,19 +121,29 @@ def _place(sim, rng, mix, station_drift):
     for rid, r in enumerate(sim.robots):
         phase = _pick_phase(rng, mix)
         drift = rng.uniform(0.0, station_drift)
+        r.task_beacons, r.task_charges = _task_progress(rng, progress)
 
-        if phase == "trong-hoc":
+        if phase in ("trong-hoc", "dang-sac"):
             d = sim.home[rid]
             if id(d) in taken:
                 phase = "long-nhong"
             else:
                 taken.add(id(d))
-        if phase == "trong-hoc":
+        if phase in ("trong-hoc", "dang-sac"):
             d = sim.home[rid]
             depth = P.DOCK_CAVITY_D - P.BODY_RADIUS - 0.005
+            if phase == "dang-sac":
+                # Mot lan sac hop le dang do: pin moi len duoc mot phan.
+                # Con thieu it nhat mot lan sac thi moi co y nghia.
+                r.task_charges = min(r.task_charges, P.TASK_CHARGES - 1)
+                batt = rng.uniform(0.10, 0.85)
+            else:
+                batt = rng.uniform(0.75, 1.0)
             sim.place_robot(rid, d.x - depth * math.cos(d.theta),
                             d.y - depth * math.sin(d.theta), d.theta,
-                            battery=rng.uniform(0.75, 1.0), station_drift=0.0)
+                            battery=batt, station_drift=0.0)
+            if phase == "dang-sac" and r.charging:
+                r.charge_valid = True
             continue
 
         if phase in ("truoc-mieng", "sap-cam"):
@@ -113,7 +154,7 @@ def _place(sim, rng, mix, station_drift):
             free = [x for x in docks if id(x) not in taken]
             if not free:
                 x, y, th = sim.free_pose(rng)
-                sim.place_robot(rid, x, y, th, battery=rng.uniform(0.05, 0.14),
+                sim.place_robot(rid, x, y, th, battery=rng.uniform(0.05, 0.19),
                                 station_drift=drift, rng=rng)
                 continue
             own = sim.home[rid]
@@ -133,32 +174,34 @@ def _place(sim, rng, mix, station_drift):
                 # Huong mui: de thi da quay san duoi vao hoc, kho thi quay
                 # lung tung.
                 th = d.theta + rng.gauss(0.0, 0.15 + 1.6 * hard)
-                batt = rng.uniform(0.05, 0.14)
+                batt = rng.uniform(0.05, 0.19)
             else:
                 depth = 0.16 - 0.14 * hard
                 x = d.x - depth * math.cos(d.theta)
                 y = d.y - depth * math.sin(d.theta)
                 th = d.theta + rng.gauss(0.0, 0.03 + 0.25 * hard)
-                batt = rng.uniform(0.04, 0.12)
+                batt = rng.uniform(0.04, 0.19)
             sim.place_robot(rid, x, y, th, battery=batt,
                             station_drift=drift, rng=rng)
             continue
 
         x, y, th = sim.free_pose(rng)
+        # long-nhong: pin tu 22% tro len. Phan lon se tut duoi 20% ngay
+        # trong lan danh gia - do la luc phai tu biet quay ve.
         batt = (rng.uniform(0.05, P.BATT_LOW - 0.005) if phase == "pin-yeu"
-                else rng.uniform(0.25, 0.95))
+                else rng.uniform(0.22, 0.95))
         sim.place_robot(rid, x, y, th, battery=batt, station_drift=drift,
                         rng=rng)
 
 
-def rollout(policy, seed, steps=600, n_robots=3, progress=0.0,
+def rollout(policy, seed, steps=1200, n_robots=3, progress=0.0,
             station_drift=2.5, collect_obs=True, n_decoys=1):
     """Chay mot lan va cham diem. Cung `seed` thi cung mat bang, cung cho
     dat xe, cung nhieu cam bien - do la dieu kien de so sanh hai bo nao."""
     world = make_fleet_map(seed, n_docks=n_robots, n_decoys=n_decoys)
     sim = FleetSim(world, n_robots=n_robots, seed=seed)
     rng = random.Random(seed * 7919 + 13)
-    _place(sim, rng, phase_mix(progress), station_drift)
+    _place(sim, rng, phase_mix(progress), station_drift, progress)
 
     brains = [PolicyBrain(policy, r.id) for r in sim.robots]
     track = [RewardTracker(r.id, sim.home[r.id], r) for r in sim.robots]
@@ -193,10 +236,16 @@ def rollout(policy, seed, steps=600, n_robots=3, progress=0.0,
     res.falls = sum(t.fell for t in track)
     res.flats = sum(t.flat for t in track)
     res.beacons = sum(t.beacons for t in track)
+    res.charges_ok = sum(t.charges_ok for t in track)
+    res.cells = sum(t.cells for t in track)
+    res.complete = sum(1 for t, r in zip(track, sim.robots)
+                       if t.complete and r.task_beacons >= P.TASK_BEACONS
+                       and r.task_charges >= P.TASK_CHARGES)
+    res.clawed = sum(t.clawed for t in track)
     return res
 
 
-def evaluate(policy, seeds, steps=600, n_robots=3, progress=1.0, **kw):
+def evaluate(policy, seeds, steps=1200, n_robots=3, progress=1.0, **kw):
     """Chay nhieu lan, tra ve diem trung binh va thong ke gop."""
     out = RolloutResult()
     tot = 0.0
@@ -209,6 +258,10 @@ def evaluate(policy, seeds, steps=600, n_robots=3, progress=1.0, **kw):
         out.falls += r.falls
         out.flats += r.flats
         out.beacons += r.beacons
+        out.charges_ok += r.charges_ok
+        out.cells += r.cells
+        out.complete += r.complete
+        out.clawed += r.clawed
     out.score = tot / max(1, len(seeds))
     out.steps = steps * len(seeds)
     return out

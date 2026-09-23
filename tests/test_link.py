@@ -95,10 +95,10 @@ class TestProtocol(unittest.TestCase):
     def test_goi_hong_thi_bo_chu_khong_no(self):
         self.assertIsNone(proto.unpack(b""))
         self.assertIsNone(proto.unpack(b"XX" + b"\x00" * 30))
-        self.assertIsNone(proto.unpack(proto.pack_obs(0, 0, 0.0, [0.0] * 48)[:20]))
+        self.assertIsNone(proto.unpack(proto.pack_obs(0, 0, 0.0, [0.0] * proto.N_INPUTS)[:20]))
 
     def test_goi_co_do_dai_co_dinh(self):
-        self.assertEqual(len(proto.pack_obs(0, 0, 0.0, [0.0] * 48)), proto.OBS_SIZE)
+        self.assertEqual(len(proto.pack_obs(0, 0, 0.0, [0.0] * proto.N_INPUTS)), proto.OBS_SIZE)
         self.assertEqual(len(proto.pack_cmd(0, 0, 0.0, 0.0, 0.0)), proto.CMD_SIZE)
 
 

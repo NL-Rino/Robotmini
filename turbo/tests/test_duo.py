@@ -20,12 +20,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(
 import numpy as np
 import torch
 
+from sim import params as P
 from turbo.duo import Duo
 from turbo.policy import BatchPolicy
 from turbo.rollout import Rollout
 
 DEV = torch.device("cpu")
-NORM = (np.zeros(48), np.ones(48))
+NORM = (np.zeros(P.N_INPUTS), np.ones(P.N_INPUTS))
 
 
 class TestSplitMatchesWhole(unittest.TestCase):
@@ -51,7 +52,13 @@ class TestSplitMatchesWhole(unittest.TestCase):
                                      steps, NORM)
         self.assertEqual(sum(share), pop)
         self.assertEqual(len(share), 2)
-        self.assertLess(float((mot.cpu() - hai).abs().max()), 1e-4,
+        # Khong con doi hoi trung toi 1e-4 nhu truoc. Lo 8 va lo 4 tinh sin/
+        # cos bang duong vector khac nhau o phan duoi mang, nen vi tri xe
+        # lech nhau ~1e-5 m - xua nay van vay. Nhung gio co luoi kham pha: mot
+        # tia lech 1e-5 m roi sang o ben canh la thanh MOT O (0,3 diem) va
+        # mot dau vao "vua thay cho moi" khac nhau. Mot o tren ca lan chay la
+        # sai so lam tron, khong phai chia sai; chia sai thi lech ca chuc diem.
+        self.assertLess(float((mot.cpu() - hai).abs().max()), 0.5,
                         "chia ra roi ghep lai khong ra dung diem cu")
 
     def test_chia_lech_van_dung(self):

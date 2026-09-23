@@ -1,5 +1,35 @@
 # Thiết kế phần mô phỏng
 
+## 0. Bản "căn nhà" (mới nhất)
+
+Mặt bằng tập không còn là một phòng 6,4 × 4,8 m. Giờ là **một căn nhà
+12 × 9 m, bốn phòng** thông nhau qua ô cửa (`sim/house.py`), mỗi hộc sạc ở
+một phòng khác nhau, có bàn ghế và sofa:
+
+- **bàn, ghế** dưới mắt LiDAR chỉ còn là **chân**: những chấm tròn 2,5 cm
+  (bàn 4 chân 1,25 × 0,72 m, ghế 4 chân 38 cm). Sofa/tủ là khối đặc.
+- **người đi lại** là **hai cái chân** (Ø11 cm, cách nhau 24 cm). Khi bước,
+  chân đang đưa về phía trước nhấc lên khỏi mặt quét nên **hiện ra rồi biến
+  mất** theo nhịp bước; đứng yên thì thấy cả hai. Va chạm vẫn tính bằng thân
+  người (Ø40 cm) - chân nhấc lên thì người vẫn đứng đó.
+- **khám phá**: sàn chia ô 50 cm (`sim/coverage.py`); sau mỗi vòng quét, ô
+  nào **lần đầu** nằm trong tầm LiDAR thì được cộng điểm một lần. Mỗi xe một
+  bản đồ riêng.
+
+**Đề bài** - một lần chạy **hoàn thành** khi xe:
+
+1. ăn đủ **5 chấm gọi** (chạm tới trong 40 cm; ăn xong chấm tắt, 4-10 giây
+   sau sáng lại ở chỗ khác), **và**
+2. sạc đủ **3 lần hợp lệ**: lúc cắm vào pin phải **dưới 20%**, và phải nằm
+   yên tới khi **đầy 100%**. Rút ra giữa chừng thì lần đó không tính.
+
+Robot tự đếm được tiến độ này nên nó là 4 đầu vào mới (60-63).
+
+Thang pin đã **nén lại** cho vừa với huấn luyện: 5 phút chạy hết ga, 20 giây
+sạc đầy (bản cũ 14,5 phút / 60 giây). 20% × 300 s = 60 giây ≈ 30 m đường -
+đủ để về hộc qua một hai ô cửa. Mục 4 bên dưới là lập luận của bản cũ, vẫn
+đúng về nguyên tắc: ngưỡng báo phải đủ pin để **tìm ra** hộc.
+
 ## 1. Bốn thay đổi so với bản cũ
 
 ### 1.1 Chạy mãi, chỉ đứt não mới dừng
@@ -30,17 +60,17 @@ và cờ `brain_lost` bật.
 ### 1.2 Đèn báo sạc thay cho lớp cưỡng ép
 
 `sim/failsafe.py` **không còn tồn tại** (có một bài kiểm thử canh đúng việc
-này). Thay vào đó, đầu vào số **39** (`batt_low_blink`):
+này). Thay vào đó, đầu vào số **51** (`batt_low_blink`):
 
-- pin ≥ 15%: luôn bằng 0
-- pin < 15%: nhấp nháy 0/1 ở 2 Hz, **liên tục**, không tự tắt, cho tới khi
-  sạc lại quá 18% (có trễ 3% cho khỏi chập chờn)
+- pin ≥ 20%: luôn bằng 0
+- pin < 20%: nhấp nháy 0/1 ở 2 Hz, **liên tục**, không tự tắt, cho tới khi
+  sạc lại quá 23% (có trễ 3% cho khỏi chập chờn)
 
 Và chỉ có thế. Không có gì khác xảy ra. Lệnh ga của bộ não đi thẳng xuống
 bánh xe không qua lớp nào. Bài `test_pin_thap_khong_lam_doi_lenh_ga` cho một
 bộ não lái hết ga ở pin 2% và kiểm tra ga xuống bánh vẫn y nguyên.
 
-**Hệ quả phải tính tới:** 15% bây giờ là phao cứu sinh duy nhất, nên nó phải
+**Hệ quả phải tính tới:** 20% bây giờ là phao cứu sinh duy nhất, nên nó phải
 đủ dùng thật. Xem mục 4.
 
 ### 1.3 Phải lùi đuôi vào hộc
@@ -84,26 +114,28 @@ Hồng ngoại **không** phân biệt hộc: mọi hộc có điện đều ph�
 chỉ cho biết "đằng kia có một cái hộc thật". Cái hộc đó của ai thì phải cắm
 vào mới biết.
 
-## 2. Bốn mươi tám đầu vào
+## 2. Sáu mươi tư đầu vào
 
 Dựng ở một chỗ duy nhất: `sim/perception.py`. Mô phỏng và robot thật đều
-phải gọi vào đây.
+phải gọi vào đây. (Bản phòng nhỏ có 48; bộ não 48 đầu vào không nạp được
+vào bản này.)
 
 | chỉ số | số | nội dung |
 |---|---:|---|
-| 0–11 | 12 | quạt LiDAR, `1 − d/8m` |
-| 12–13 | 2 | vực trái / phải |
-| 14–25 | 12 | 2 ứng viên hộc × [điểm, cự ly, sin/cos phương vị, sin/cos **trục ra**] |
-| 26–31 | 6 | hồng ngoại: đèn gọi [thấy, sin, cos] + hộc sạc [thấy, sin, cos] |
-| 32–37 | 6 | bộ nhớ trạm: [có, cự ly, sin/cos phương vị, sin/cos trục] |
-| 38–40 | 3 | pin: [mức pin, **ĐÈN BÁO SẠC NHẤP NHÁY**, đang có điện] |
-| 41–42 | 2 | tiếp điện: [đang cắm vào một hộc, **TÍN HIỆU ĐÚNG HỘC**] |
-| 43–47 | 5 | chuyển động: [tốc độ thẳng, tốc độ quay, ga trái, ga phải, chạm] |
+| 0–23 | 24 | quạt LiDAR (mỗi quạt 15°), `1 − d/8m` |
+| 24–25 | 2 | vực trái / phải |
+| 26–37 | 12 | 2 ứng viên hộc × [điểm, cự ly, sin/cos phương vị, sin/cos **trục ra**] |
+| 38–43 | 6 | hồng ngoại: đèn gọi [thấy, sin, cos] + hộc sạc [thấy, sin, cos] |
+| 44–49 | 6 | bộ nhớ trạm: [có, cự ly, sin/cos phương vị, sin/cos trục] |
+| 50–52 | 3 | pin: [mức pin, **ĐÈN BÁO SẠC NHẤP NHÁY**, đang có điện] |
+| 53–54 | 2 | tiếp điện: [đang cắm vào một hộc, **TÍN HIỆU ĐÚNG HỘC**] |
+| 55–59 | 5 | chuyển động: [tốc độ thẳng, tốc độ quay, ga trái, ga phải, chạm] |
+| 60–63 | 4 | đề bài: [chấm đã ăn /5, lần sạc hợp lệ /3, **lần sạc đang cắm có hợp lệ không**, vừa thấy chỗ mới] |
 
 So với bản cũ (46): bỏ **biên an toàn** (thuộc về lớp cưỡng ép đã xoá), thêm
 `batt_low_blink`, `batt_charging`, `contact_in_slot`, `contact_id_ok`.
 
-Ga báo lại (45, 46) là **ga thực sự đã chạy**, không phải ga được yêu cầu.
+Ga báo lại (57, 58) là **ga thực sự đã chạy**, không phải ga được yêu cầu.
 Khi một lớp nào đó đè lệnh mà không báo lại thì trạng thái GRU trên laptop
 sẽ trôi khỏi thực tế đúng lúc xe đang gặp chuyện.
 
@@ -159,7 +191,7 @@ quãng đường), còn cái làm sai *hướng* là phần **lệch giữa hai 
 chia cho vệt bánh 0,235 m ra 0,21 rad mỗi mét — đi 20 m là xe tự quay đủ một
 vòng trong đầu nó.
 
-## 4. Vì sao pin lại to như thế
+## 4. Vì sao pin lại to như thế (lập luận của bản phòng nhỏ)
 
 Đây là con số bị ràng buộc chặt nhất, và nó là **hệ quả trực tiếp** của việc
 bỏ lớp cưỡng ép cộng với việc có năm cái hộc giống hệt nhau.
@@ -206,9 +238,9 @@ xe và **một** hộc, không có hộc nào giống nó để cắm nhầm.
 
 ## 6. Bộ luật viết tay dùng để làm gì
 
-`brain/rule_brain.py` **chỉ đọc 48 đầu vào** như bộ não học được: không nhìn
+`brain/rule_brain.py` **chỉ đọc 64 đầu vào** như bộ não học được: không nhìn
 toạ độ thật, không biết hộc nào mang mã nào, không biết mình đang ở đâu trên
-bản đồ. Nó có mặt để chứng minh 48 đầu vào là **đủ** làm trọn quy trình, và
+bản đồ. Nó có mặt để chứng minh 64 đầu vào là **đủ** làm trọn quy trình, và
 để nhìn mô phỏng chạy.
 
 **Đừng dùng nó làm giáo án bắt chước cho phần cắm hộc.** Việc "phải lùi đuôi

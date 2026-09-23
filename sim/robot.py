@@ -36,7 +36,14 @@ class Robot:
         self.w = 0.0
 
         self.battery = 1.0
-        self.low_lamp = False           # chot nguong 15% co tre
+        self.low_lamp = False           # chot nguong bao sac, co tre
+
+        # ---- tien do de bai (xem sim/params.py muc "de bai")
+        self.task_beacons = 0           # da an may cham goi
+        self.task_charges = 0           # da sac day may lan HOP LE
+        self.charge_valid = False       # lan cam hien tai con duoc tinh khong
+        self.new_area = 0.0             # vua thay them bao nhieu cho moi
+        self.seen_cells = None          # luoi da di qua, FleetSim cap
         self.charging = False
         self.in_slot = False
         self.id_signal = False
@@ -215,9 +222,19 @@ class Robot:
             if not was_charging:
                 self.n_charges += 1
                 self.remember_station(contact.dock.axis_out())
+                # MOT LAN SAC HOP LE bat dau tu day: luc cam vao pin phai
+                # dang duoi nguong bao dong. Cam luc pin con day thi lan do
+                # khong bao gio duoc tinh, du co nam den khi day.
+                self.charge_valid = self.battery < P.BATT_LOW
             self.charge_seconds += dt
             self.battery = min(1.0, self.battery + P.BATT_CHARGE_RATE * dt)
+            if self.charge_valid and self.battery >= P.BATT_FULL:
+                # Day roi: tinh mot lan, va tat co de khong dem hai lan.
+                self.task_charges += 1
+                self.charge_valid = False
         else:
+            # Roi hoc khi chua day -> lan do mat, phai lam lai tu dau.
+            self.charge_valid = False
             if contact.wrong_dock and contact.in_slot and not was_in_slot:
                 # Vua cam vao mot hoc khong phai cua minh: chan tiep dien
                 # cham that, nhung hoc khong phat tin hieu va khong co dien.

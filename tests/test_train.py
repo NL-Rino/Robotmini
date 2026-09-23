@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 
 from train import train as T
+from sim import params as P
 from train.es import AdamW, centered_ranks, gradient, noise
 from train.policy import GRUPolicy, ObsNorm, PolicyBrain
 from train.rollout import PHASES, phase_mix, rollout
@@ -25,9 +26,10 @@ from train.rollout import PHASES, phase_mix, rollout
 class TestPolicy(unittest.TestCase):
     def test_kich_thuoc_va_tinh_xac_dinh(self):
         p = GRUPolicy(n_hidden=16, seed=3)
-        self.assertEqual(p.n_params, 3154)
+        # 3 cong x (16x64 + 16x16 + 16) + dau ra 2x16 + 2
+        self.assertEqual(p.n_params, 3922)
         self.assertEqual(p.theta.shape, (p.n_params,))
-        o = np.linspace(0, 1, 48)
+        o = np.linspace(0, 1, P.N_INPUTS)
         h = p.new_state()
         a1, h1 = p.step(o, h)
         a2, h2 = p.step(o, p.new_state())
@@ -39,12 +41,12 @@ class TestPolicy(unittest.TestCase):
         p.set_theta(p.theta * 50.0)          # ep tanh bao hoa
         h = p.new_state()
         for _ in range(20):
-            y, h = p.step(np.random.rand(48), h)
+            y, h = p.step(np.random.rand(P.N_INPUTS), h)
             self.assertTrue(np.all(np.abs(y) <= 1.0))
 
     def test_ghi_va_doc_lai_khong_sai_lech(self):
         p = GRUPolicy(n_hidden=12, seed=5)
-        p.norm.update(np.full(48, 0.3), np.full(48, 0.04), 1000)
+        p.norm.update(np.full(P.N_INPUTS, 0.3), np.full(P.N_INPUTS, 0.04), 1000)
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "x.npz")
             p.save(path, meta=dict(gen=42))
@@ -52,7 +54,7 @@ class TestPolicy(unittest.TestCase):
         np.testing.assert_allclose(p.theta, q.theta)
         np.testing.assert_allclose(p.norm.mean, q.norm.mean)
         self.assertEqual(int(meta["gen"]), 42)
-        o = np.random.rand(48)
+        o = np.random.rand(P.N_INPUTS)
         np.testing.assert_allclose(p.step(o, p.new_state())[0],
                                    q.step(o, q.new_state())[0])
 

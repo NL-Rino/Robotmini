@@ -297,7 +297,12 @@ def _verify(px, py, m0, cx, cy, axis):
             & (wl >= 1) & (wr >= 1) & (wl + wr >= 4))
 
     s_span = (1.0 - (span - P.DOCK_CAVITY_W).abs() / 0.20).clamp(0.0, 1.0)
-    s_flat = (1.0 - rms / 0.020).clamp(0.0, 1.0)
+    # Do phang phai tinh THEO CU LY, dung nhu `tol` o tren: nhieu LiDAR ti
+    # le voi cu ly, nen o 2 m thanh trong phang tuyet doi van co do lech
+    # trung binh ~2 cm. Nguong co dinh 2 cm thi o do diem ve 0 va xe dung
+    # thang truoc hoc cua minh cach 1,9 m ma khong thay no.
+    flat_tol = 0.020 + 1.6 * P.LIDAR_NOISE * hypot(mx, my)
+    s_flat = (1.0 - rms / flat_tol).clamp(0.0, 1.0)
     s_wing = 0.55 + 0.45 * ((wl + wr).to(u.dtype) / 10.0).clamp(max=1.0)
     score = s_span * s_flat * s_wing
     score = torch.where(good, score, torch.zeros_like(score))

@@ -1,6 +1,6 @@
-"""Bo nao: GRU 48 -> H -> 2, numpy thuan, khong thu vien hoc may nao.
+"""Bo nao: GRU 64 -> H -> 2, numpy thuan, khong thu vien hoc may nao.
 
-Kem theo bo CHUAN HOA DAU VAO. Day khong phai chi tiet vun vat: 48 dau vao
+Kem theo bo CHUAN HOA DAU VAO. Day khong phai chi tiet vun vat: 64 dau vao
 co phan bo lech nhau rat xa - co cai gan nhu luon bang 0 (den bao sac), co
 cai luon quanh 0,9 (quat LiDAR nhin vao tuong). Khong chuan hoa thi moi
 trong so hoc voi mot toc do khac han nhau va ES phai phi rat nhieu the he
@@ -14,7 +14,11 @@ duoc voi nhau nua.
 
 import numpy as np
 
-N_IN = 48
+from sim import params as _P
+
+# 64 dau vao tu ban "can nha": 24 quat LiDAR va 4 so tien do de bai. Bo nao
+# 48 dau vao cu KHONG nap duoc vao day - phai tao bo nao moi.
+N_IN = _P.N_INPUTS
 N_OUT = 2
 
 
@@ -59,7 +63,7 @@ class ObsNorm:
 class GRUPolicy:
     """GRU mot lop. Tham so giu duoi dang MOT vector phang cho ES de xao."""
 
-    def __init__(self, n_hidden=16, n_in=N_IN, n_out=N_OUT, seed=0):
+    def __init__(self, n_hidden=48, n_in=N_IN, n_out=N_OUT, seed=0):
         self.n_in = int(n_in)
         self.n_h = int(n_hidden)
         self.n_out = int(n_out)
@@ -103,7 +107,7 @@ class GRUPolicy:
         return np.zeros(self.n_h, dtype=np.float64)
 
     def step(self, obs, h):
-        """Mot buoc. `obs` la 48 so tho; chuan hoa lam ngay o day."""
+        """Mot buoc. `obs` la 64 so tho; chuan hoa lam ngay o day."""
         x = self.norm.apply(np.asarray(obs, dtype=np.float64))
         p = self.p
         z = _sigmoid(p["Wz"] @ x + p["Uz"] @ h + p["bz"])

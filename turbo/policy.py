@@ -70,7 +70,7 @@ class BatchPolicy:
         return torch.zeros(n_pop, n_each, self.n_h, device=self.device)
 
     def step(self, p, obs, h):
-        """obs: (P,G,48) tho. h: (P,G,H). Tra ve (y (P,G,2), h moi).
+        """obs: (P,G,64) tho. h: (P,G,H). Tra ve (y (P,G,2), h moi).
 
         Viet bang `matmul` chu khong phai `einsum`: einsum cung ra bmm thoi,
         nhung tren card lien no hay roi ve duong vong cham. (P,G,I) x (P,I,H)

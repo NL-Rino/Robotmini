@@ -2,7 +2,7 @@
 
 Trong tam nam o bon dieu moi:
   1. Chay MAI - chi dut ket noi bo nao moi dung, xe chet khong dung the gioi
-  2. Duoi 15% pin chi co MOT DAU VAO NHAP NHAY, khong co lop cuong ep nao
+  2. Duoi 20% pin chi co MOT DAU VAO NHAP NHAY, khong co lop cuong ep nao
   3. Muon sac thi phai LUI DUOI VAO, cam dau vao thi khong an thua
   4. Moi xe mot MA HOC SAC; cam nham hoc thi cham duoc nhung khong co dien
 """
@@ -302,7 +302,7 @@ class TestLowBatteryLamp(unittest.TestCase):
 
 # ---------------------------------------------------------------- dau vao
 class TestPerception(unittest.TestCase):
-    def test_dung_48_dau_vao_va_deu_huu_han(self):
+    def test_dung_64_dau_vao_va_deu_huu_han(self):
         sim = FleetSim(seed=3, n_robots=3)
         obs = sim.observe()
         self.assertEqual(len(PC.INPUT_NAMES), P.N_INPUTS)
@@ -391,7 +391,7 @@ class TestFleet(unittest.TestCase):
 
     def test_khong_du_hoc_co_ma_thi_bao_loi_ngay(self):
         with self.assertRaises(ValueError):
-            FleetSim(seed=3, n_robots=7)
+            FleetSim(make_fleet_map(3, n_docks=3), n_robots=5)
 
     def test_cac_xe_nhin_thay_nhau_tren_lidar(self):
         sim = FleetSim(seed=3, n_robots=2)

@@ -95,8 +95,8 @@ def _es_step(theta, eps, sp, sm, sigma, opt):
     return opt.step(theta, g), float(np.linalg.norm(g))
 
 
-def train(out="runs/gpu1", hidden=16, pop=64, sigma=0.05, lr=0.02,
-          weight_decay=0.005, steps=600, robots=3, maps=2, gens=1000,
+def train(out="runs/gpu1", hidden=48, pop=64, sigma=0.05, lr=0.02,
+          weight_decay=0.005, steps=1200, robots=3, maps=2, gens=1000,
           resume=None, init=None, curriculum_gens=600, eval_every=20,
           device=None, quiet=False, seed=0, threads=None):
     devs = _devices(device, quiet=quiet)
@@ -196,7 +196,11 @@ def train(out="runs/gpu1", hidden=16, pop=64, sigma=0.05, lr=0.02,
                        charged=round(st["charged"], 3),
                        wrong=round(st["wrong"], 2),
                        falls=round(st["falls"], 2), flats=round(st["flats"], 2),
-                       beacons=round(st["beacons"], 2), engine="turbo")
+                       beacons=round(st["beacons"], 2),
+                       charges_ok=round(st.get("charges_ok", 0.0), 2),
+                       cells=round(st.get("cells", 0.0), 1),
+                       complete=round(st.get("complete", 0.0), 2),
+                       engine="turbo")
             if len(devs) > 1:
                 rec["chia"] = list(share)
 
@@ -208,7 +212,10 @@ def train(out="runs/gpu1", hidden=16, pop=64, sigma=0.05, lr=0.02,
                             "eval_charged": round(ev["charged"], 3),
                             "eval_falls": round(ev["falls"], 2),
                             "eval_flats": round(ev["flats"], 2),
-                            "eval_wrong": round(ev["wrong"], 2)})
+                            "eval_wrong": round(ev["wrong"], 2),
+                            "eval_beacons": round(ev["beacons"], 2),
+                            "eval_charges_ok": round(ev["charges_ok"], 2),
+                            "eval_complete": round(ev["complete"], 2)})
                 if ev["score"] > best:
                     best = ev["score"]
                     pol.save(os.path.join(out, "best.npz"),
@@ -224,7 +231,8 @@ def train(out="runs/gpu1", hidden=16, pop=64, sigma=0.05, lr=0.02,
             if not quiet:
                 line = (f"the he {gen:5d}  diem {mean_score:8.1f}  "
                         f"{rec['secs']:5.1f}s  giao trinh {progress:4.2f}  "
-                        f"sac {rec['charged']:.2f}  roi {rec['falls']:.2f}  "
+                        f"cham {rec['beacons']:.2f}  sac-du {rec['charges_ok']:.2f}  "
+                        f"xong {rec['complete']:.2f}  roi {rec['falls']:.2f}  "
                         f"het pin {rec['flats']:.2f}  nham {rec['wrong']:.2f}")
                 if "eval" in rec:
                     line += f"  || do rieng {rec['eval']:8.1f}"
@@ -253,12 +261,12 @@ def _holdout(ro, bp, pol, steps):
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Nuoi bo nao bang ES, theo lo")
     ap.add_argument("--out", default="runs/gpu1")
-    ap.add_argument("--hidden", type=int, default=16)
+    ap.add_argument("--hidden", type=int, default=48)
     ap.add_argument("--pop", type=int, default=64)
     ap.add_argument("--sigma", type=float, default=0.05)
     ap.add_argument("--lr", type=float, default=0.02)
     ap.add_argument("--weight-decay", type=float, default=0.005)
-    ap.add_argument("--steps", type=int, default=600)
+    ap.add_argument("--steps", type=int, default=1200)
     ap.add_argument("--robots", type=int, default=3)
     ap.add_argument("--maps", type=int, default=2)
     ap.add_argument("--gens", type=int, default=1000)

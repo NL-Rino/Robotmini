@@ -131,10 +131,10 @@ def check(dev, robots=48, quiet=False, only=None, dev_key=None,
 
     try:
         v = PC.build(s, dk)
-        assert v.shape == (s.R, 48)
-        _ok("dung 48 dau vao")
+        assert v.shape == (s.R, P.N_INPUTS)
+        _ok("dung 64 dau vao")
     except Exception as e:
-        _fail("dung 48 dau vao", e)
+        _fail("dung 64 dau vao", e)
         return 1
 
     try:
@@ -208,7 +208,7 @@ def _four(dev, pop, PC, bad, run, dev_key=None, retry=True):
     _, good = _stage("hong ngoai", lambda: ro.sim.ir_dock(), dev)
     if not good:
         return _thu_cach_khac(dev_key, retry, pop)
-    obs, good = _stage("dung 48 dau vao",
+    obs, good = _stage("dung 64 dau vao",
                        lambda: PC.build(ro.sim, ro.docks), dev)
     if not good:
         _deep_build(ro.sim, ro.docks, dev)
@@ -326,7 +326,7 @@ def _do_toc_do(n_pop, dev, muc_tieu=25000):
 
 
 def _deep_build(sim, docks, dev):
-    """Tim cho card chet trong "dung 48 dau vao", theo hai buoc.
+    """Tim cho card chet trong "dung 64 dau vao", theo hai buoc.
 
     Den day thi da biet: khong phai het tai nguyen (chay rieng cung hong),
     khong phai cach gom tia (ca ba cach deu hong). Con lai la mot phep cu
@@ -341,7 +341,7 @@ def _deep_build(sim, docks, dev):
     """
     from turbo import perception as PC2
 
-    print("\n   Di tung khoi mot trong 'dung 48 dau vao':")
+    print("\n   Di tung khoi mot trong 'dung 64 dau vao':")
     xong = []
 
     def hook(ten, x):
@@ -387,8 +387,8 @@ def _deep_build(sim, docks, dev):
             print(f"     [ duoc  ] {name}")
         return r, True
 
-    v, ok = step("tao mang 48 dau vao",
-                 lambda: torch.zeros(sim.R, 48, device=dev))
+    v, ok = step("tao mang 64 dau vao",
+                 lambda: torch.zeros(sim.R, P.N_INPUTS, device=dev))
     if not ok:
         return
     f, ok = step("sim.fans()", lambda: sim.fans())

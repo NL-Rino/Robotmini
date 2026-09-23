@@ -132,7 +132,7 @@ class TestNoScalarAssign(unittest.TestCase):
     Tren CPU thi `v[:, 5] = 1.0` chay binh thuong. Tren card lien no bao
     `scatter(): Expected self.dtype to be equal to src.dtype`, vi so Python
     thanh mot so 64 bit con tensor la 32 bit. Da vap dung loi nay o buoc
-    "dung 48 dau vao". Bai kiem thu nay bat ca LOP loi do, khong phai mot
+    "dung 64 dau vao". Bai kiem thu nay bat ca LOP loi do, khong phai mot
     dong cu the.
     """
 

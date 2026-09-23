@@ -2,8 +2,9 @@
 """Doi mat bang cua ban v1 sang tensor de chay theo lo.
 
 KHONG viet lai bo sinh mat bang. Goi thang `sim.world.make_fleet_map` cua
-ban v1 roi doi sang tensor. Nho vay hai ban chay tren DUNG cung mot can
-phong, va moi so do cua ban cu van con nghia.
+ban v1 (gio la CAN NHA nhieu phong, xem `sim/house.py`) roi doi sang
+tensor. Nho vay hai ban chay tren DUNG cung mot can nha, va moi so do cua
+ban cu van con nghia.
 
 Mot xe = mot hang trong moi tensor. Nhieu xe co the dung chung mat bang;
 luc dung tensor thi trai phang ra het, vi 144 hang x 64 doan thang chi het
@@ -35,6 +36,7 @@ class BatchWorld:
         self.R = len(self.world_of)
 
         segs, docks, voids, floors, movers, beacons = [], [], [], [], [], []
+        legs, mlegs = [], []
         for w in worlds:
             s = w.static_segments
             segs.append([(float(s.ax[i]), float(s.ay[i]), float(s.bx[i]),
@@ -47,12 +49,16 @@ class BatchWorld:
             floors.append([x0, y0, x1, y1])
             movers.append([(m.x, m.y, m.radius) for m in w.movers])
             beacons.append([(b.x, b.y, 1.0 if b.on else 0.0) for b in w.beacons])
+            legs.append(list(w.legs))
+            mlegs.append([c for m in w.movers for c in m.leg_circles()])
 
         ns = max(len(s) for s in segs)
         nd = max(len(d) for d in docks)
         nv = max(1, max(len(v) for v in voids))
         nm = max(1, max(len(m) for m in movers))
         nb = max(1, max(len(b) for b in beacons))
+        nl = max(1, max(len(g) for g in legs))
+        nml = max(2, max(len(g) for g in mlegs))
 
         idx = torch.tensor(self.world_of, dtype=torch.long)
         self._widx = idx.to(device)
@@ -62,7 +68,15 @@ class BatchWorld:
         self.floor = torch.tensor(floors, dtype=torch.float32)[idx].to(device)
         self.mover = _pad(movers, nm, 3)[idx].to(device)
         self.beacon = _pad(beacons, nb, 3)[idx].to(device)
+        # Chan ban ghe: dung yen, chan xe VA hien tren LiDAR.
+        self.legs = _pad(legs, nl, 3)[idx].to(device)
+        # Hai chan cua moi nguoi: chi de LiDAR va hong ngoai nhin, cap nhat
+        # moi buoc (chan nhac len thi ban kinh 0 = tia xuyen qua).
+        self.mover_legs = _pad(mlegs, nml, 3)[idx].to(device)
         self.n_dock = nd
+        # Cho dat lai cham goi khi da bi an: tinh san tren CPU mot lan.
+        self.spots = torch.tensor(beacon_spots(worlds), dtype=torch.float32
+                                  )[idx].to(device)
 
         # Doan rong (dai 0) bi phep giao tia loai ngay vi mau so bang 0, nen
         # khong can mat na rieng.
@@ -90,6 +104,7 @@ class BatchWorld:
         """
         self._mover_src = [[] for _ in self.worlds]
         self.mover.zero_()
+        self.mover_legs.zero_()
         self._frozen = True
 
     def step_dynamics(self, dt, rng):
@@ -103,12 +118,15 @@ class BatchWorld:
         """
         for w in self.worlds:
             w.step_dynamics(dt, rng)
-        pos, bea = [], []
-        for ms, bs in zip(self._mover_src, self._beacon_src):
+        pos, lg = [], []
+        for ms in self._mover_src:
             pos.append([(m.x, m.y, m.radius) for m in ms])
-            bea.append([(b.x, b.y, 1.0 if b.on else 0.0) for b in bs])
+            lg.append([c for m in ms for c in m.leg_circles()])
+        # Den goi o ban nay la cua TUNG XE (BatchSim giu), nen khong chep
+        # tu mat bang CPU nua - chi con nguoi di lai.
         self.mover = _pad(pos, self.mover.shape[1], 3).to(self.device)[self._widx]
-        self.beacon = _pad(bea, self.beacon.shape[1], 3).to(self.device)[self._widx]
+        self.mover_legs = _pad(lg, self.mover_legs.shape[1], 3
+                               ).to(self.device)[self._widx]
 
     def home_pose(self):
         g = self.home[:, None, None].expand(-1, 1, 5)
@@ -164,13 +182,19 @@ def spawn_in_dock(pose):
             pose[:, 2].clone())
 
 
-def free_spots(worlds, n=48):
-    """Cac cho dung trong, tinh mot lan tren CPU."""
+def free_spots(worlds, n=48, clear=P.BODY_RADIUS + 0.10):
+    """Cac cho dung trong, tinh mot lan tren CPU.
+
+    Tranh ca chan ban ghe: dat xe (hay cham goi) de len chan ghe thi buoc
+    dau tien da la mot cu va.
+    """
     import random
+    import zlib
     from sim.geometry import point_segment_distance
     out = []
     for w in worlds:
-        rng = random.Random(hash(w.name) & 0xFFFF)
+        # `hash()` cua chuoi doi moi lan chay Python; crc32 thi khong.
+        rng = random.Random(zlib.crc32(w.name.encode()) & 0xFFFF)
         x0, y0, x1, y1 = w.bounds
         spots = []
         tries = 0
@@ -181,10 +205,21 @@ def free_spots(worlds, n=48):
             if not w.on_floor(px, py):
                 continue
             d = point_segment_distance(px, py, w.static_segments)
-            if d.size and float(d.min()) < P.BODY_RADIUS + 0.10:
+            if d.size and float(d.min()) < clear:
+                continue
+            if any(((px - cx) ** 2 + (py - cy) ** 2) ** 0.5 < clear + cr
+                   for cx, cy, cr in w.legs):
                 continue
             spots.append((px, py))
         while len(spots) < n:
             spots.append((0.5 * (x0 + x1), 0.5 * (y0 + y1)))
         out.append(spots)
     return out
+
+
+N_SPOTS = 64
+
+
+def beacon_spots(worlds, n=N_SPOTS):
+    """Cho dat cham goi: tren san, cach tuong va chan ghe it nhat 35 cm."""
+    return free_spots(worlds, n=n, clear=0.35)

@@ -89,17 +89,30 @@ class Beacon:
         self.x = float(x)
         self.y = float(y)
         self.on = bool(on)
+        self.wait = 0.0         # con bao lau nua thi sang lai o cho khac
 
     def step(self, dt, rng):
-        # Thinh thoang tat/bat de xe khong coi no la coc tieu co dinh.
-        if rng.random() < 0.002:
-            self.on = not self.on
+        # Cham goi SANG CHO TOI KHI BI AN, khong tu tat ngau nhien nua: de bai
+        # la "an du 5 cham". An roi thi no tat, doi vai giay, roi sang lai o
+        # MOT CHO KHAC (FleetSim chon cho) - nhu mot nguoi khac vua goi xe.
+        if not self.on and self.wait > 0.0:
+            self.wait = max(0.0, self.wait - dt)
 
 
 class Mover:
-    """Nguoi di lai: hinh tron, di theo cac diem moc, doi huong ngau nhien."""
+    """Nguoi di lai.
 
-    def __init__(self, x, y, radius=0.18, speed=0.45, waypoints=()):
+    Duoi mat LiDAR (cao khoang 20 cm) mot nguoi KHONG phai mot khoi tron ma
+    la HAI CAI CHAN. Va khi buoc thi chan sau nhac len khoi mat quet, nen
+    tren vong quet no hien ra roi bien mat theo nhip buoc. Do la dau hieu
+    de phan biet nguoi voi cai chan ban.
+
+    Va cham thi van tinh bang mot khoi tron o than nguoi: chan nhac len van
+    la nguoi dung do, xe khong duoc di xuyen qua.
+    """
+
+    def __init__(self, x, y, radius=P.BODY_RADIUS_HUMAN, speed=0.45,
+                 waypoints=(), phase=0.0):
         self.x = float(x)
         self.y = float(y)
         self.radius = float(radius)
@@ -107,12 +120,17 @@ class Mover:
         self.waypoints = list(waypoints)
         self.idx = 0
         self.pause = 0.0
+        self.heading = 0.0
+        self.phase = float(phase)       # nhip buoc chan, 0..1
+        self.moving = False
 
     def step(self, dt, rng):
         if not self.waypoints:
+            self.moving = False
             return
         if self.pause > 0.0:
             self.pause -= dt
+            self.moving = False
             return
         tx, ty = self.waypoints[self.idx]
         dx, dy = tx - self.x, ty - self.y
@@ -121,13 +139,42 @@ class Mover:
             self.idx = (self.idx + 1) % len(self.waypoints)
             if rng.random() < 0.35:
                 self.pause = rng.uniform(0.5, 2.5)
+            self.moving = False
             return
         step = min(self.speed * dt, d)
         self.x += dx / d * step
         self.y += dy / d * step
+        self.heading = math.atan2(dy, dx)
+        self.moving = True
+        self.phase = (self.phase + P.STRIDE_HZ * dt) % 1.0
 
     def as_circle(self):
+        """Khoi tron de tinh VA CHAM - khong phai thu LiDAR nhin thay."""
         return (self.x, self.y, self.radius)
+
+    def leg_circles(self):
+        """Hai cai chan, la thu LiDAR THAT SU nhin thay.
+
+        Chan truoc/sau dao qua dao lai doc huong di; chan dang nhac len tra
+        ve ban kinh 0, tuc la tia quet xuyen qua - dung nhu ngoai doi.
+        """
+        c, s = math.cos(self.heading), math.sin(self.heading)
+        nx, ny = -s, c                       # phuong ngang than nguoi
+        half = 0.5 * P.LEG_SPACING
+        if not self.moving:
+            # Dung yen: hai chan song song, deu thay ca hai.
+            return [(self.x + nx * half, self.y + ny * half, P.LEG_R_HUMAN),
+                    (self.x - nx * half, self.y - ny * half, P.LEG_R_HUMAN)]
+        swing = 0.16 * math.sin(2.0 * math.pi * self.phase)
+        out = []
+        for k, sgn in ((0, 1.0), (1, -1.0)):
+            off = swing * sgn
+            lx = self.x + nx * half * sgn + c * off
+            ly = self.y + ny * half * sgn + s * off
+            # Chan dang dua ve phia truoc la chan dang NHAC LEN -> mat hut
+            lifted = (off > 0.10)
+            out.append((lx, ly, 0.0 if lifted else P.LEG_R_HUMAN))
+        return out
 
 
 class World:
@@ -138,7 +185,7 @@ class World:
     """
 
     def __init__(self, floor, walls=None, obstacles=None, docks=(), beacons=(),
-                 movers=(), voids=(), name="map"):
+                 movers=(), voids=(), legs=(), name="map"):
         self.name = name
         self.floor = list(floor)
         self.voids = [list(v) for v in voids]
@@ -147,6 +194,10 @@ class World:
         self.docks = list(docks)
         self.beacons = list(beacons)
         self.movers = list(movers)
+        # Chan ban, chan ghe: nhung cham tron 2,5 cm dung yen. De rieng khoi
+        # `obstacles` vi hinh tron re hon nhieu so voi bon doan thang: mot
+        # cai ghe bon chan la 4 hinh tron thay vi 16 doan.
+        self.legs = [tuple(float(v) for v in g) for g in legs]
         self._rebuild()
 
     def _rebuild(self):
@@ -183,7 +234,23 @@ class World:
             b.step(dt, rng)
 
     def mover_circles(self):
+        """Giu ten cu: khoi tron de tinh VA CHAM."""
         return [m.as_circle() for m in self.movers]
+
+    def solid_circles(self):
+        """Thu chan duong xe: chan ban ghe + than nguoi."""
+        return self.legs + [m.as_circle() for m in self.movers]
+
+    def lidar_circles(self):
+        """Thu LiDAR NHIN THAY: chan ban ghe + hai chan cua moi nguoi.
+
+        Khac `solid_circles` o cho nguoi: quet thay hai cai chan (mot cai
+        nhap nhay theo nhip buoc), con va cham thi tinh bang than nguoi.
+        """
+        out = list(self.legs)
+        for m in self.movers:
+            out.extend(m.leg_circles())
+        return out
 
 
 # --------------------------------------------------------------------------
@@ -195,13 +262,24 @@ def _wall_rect(x0, y0, x1, y1):
         [(x0, y0), (x1, y0), (x1, y1), (x0, y1)], closed=True, tag=("wall", None))
 
 
-def make_fleet_map(seed=0, n_docks=5, width=6.4, height=4.8, n_movers=3,
+def make_fleet_map(seed=0, n_docks=3, width=None, height=None, n_movers=3,
                    n_decoys=1, with_void=True):
-    """Mat bang mac dinh: mot phong, N hoc sac ma khac nhau dat sat tuong.
+    """Mat bang de huan luyen: MOT CAN NHA (xem `sim/house.py`).
 
-    Moi hoc mot ma. Ngoai ra co the tha them vai hoc MOI NHU: giong het ve
-    hinh dang nhung khong phat hong ngoai va khong co dien.
+    Giu ten cu de moi cho goi no khong phai sua. Ban cu - mot phong 6,4 x
+    4,8 m - van con o `make_one_room` ngay duoi, dung cho cac bai kiem thu
+    can mot mat bang nho va don gian.
     """
+    from .house import make_house
+    return make_house(seed, n_docks=n_docks, n_decoys=n_decoys,
+                      width=width if width else P.HOUSE_W,
+                      height=height if height else P.HOUSE_H,
+                      n_movers=n_movers, with_void=with_void)
+
+
+def make_one_room(seed=0, n_docks=5, width=6.4, height=4.8, n_movers=3,
+                  n_decoys=1, with_void=True):
+    """Mot phong don, ban truoc. Giu lai de kiem thu cho nhanh."""
     rng = random.Random(seed)
 
     floor = [(0.0, 0.0), (width, 0.0), (width, height), (0.0, height)]

@@ -21,7 +21,8 @@ import torch
 
 from sim import params as P
 from sim.geometry import point_segment_distance
-from train.rollout import MIX_EARLY, MIX_LATE, PHASES, phase_mix
+from train.rollout import (MIX_EARLY, MIX_LATE, PHASES, _task_progress,
+                           phase_mix)
 
 from . import dock as D, perception as PC, world as TW
 from .reward import BatchReward
@@ -50,6 +51,9 @@ def _free_pose(w, rng, taken_xy, tries=60):
         d = point_segment_distance(x, y, w.static_segments)
         if d.size and float(d.min()) < P.BODY_RADIUS + 0.10:
             continue
+        if any(math.hypot(x - cx, y - cy) < P.BODY_RADIUS + cr + 0.08
+               for cx, cy, cr in w.solid_circles()):
+            continue
         if any(math.hypot(x - ax, y - ay) < 2 * P.BODY_RADIUS + 0.1
                for ax, ay in taken_xy):
             continue
@@ -57,9 +61,14 @@ def _free_pose(w, rng, taken_xy, tries=60):
     return 0.5 * (x0 + x1), 0.5 * (y0 + y1), rng.uniform(-math.pi, math.pi)
 
 
-def start_states(bw, unit, rng, mix, station_drift):
-    """Cho dat cho `unit` con xe dau (mot ban sao). Tra ve cac danh sach."""
+def start_states(bw, unit, rng, mix, station_drift, progress=0.0):
+    """Cho dat cho `unit` con xe dau (mot ban sao). Tra ve cac danh sach.
+
+    Kem theo tien do de bai cap san cho tung xe: (so cham, so lan sac, dang
+    o giua mot lan sac hop le hay khong) - xem `train/rollout.py`.
+    """
     xs, ys, ths, batts, sts = [], [], [], [], []
+    tasks = []
     by_world = {}
     for u in range(unit):
         wi = bw.world_of[u]
@@ -76,22 +85,29 @@ def start_states(bw, unit, rng, mix, station_drift):
             home = w.docks[int(bw.home[u])]
             phase = _pick_phase(rng, mix)
             drift = rng.uniform(0.0, station_drift)
+            tb, tc = _task_progress(rng, progress)
+            valid = False
 
-            if phase == "trong-hoc" and id(home) in taken:
+            if phase in ("trong-hoc", "dang-sac") and id(home) in taken:
                 phase = "long-nhong"
-            if phase == "trong-hoc":
+            if phase in ("trong-hoc", "dang-sac"):
                 taken.add(id(home))
                 depth = P.DOCK_CAVITY_D - P.BODY_RADIUS - 0.005
                 x = home.x - depth * math.cos(home.theta)
                 y = home.y - depth * math.sin(home.theta)
                 th = home.theta
-                batt = rng.uniform(0.75, 1.0)
+                if phase == "dang-sac":
+                    tc = min(tc, P.TASK_CHARGES - 1)
+                    batt = rng.uniform(0.10, 0.85)
+                    valid = True
+                else:
+                    batt = rng.uniform(0.75, 1.0)
                 drift = 0.0
             elif phase in ("truoc-mieng", "sap-cam"):
                 free = [d for d in docks if id(d) not in taken]
                 if not free:
                     x, y, th = _free_pose(w, rng, placed)
-                    batt = rng.uniform(0.05, 0.14)
+                    batt = rng.uniform(0.05, 0.19)
                 else:
                     # Hoc chon NGAU NHIEN: khoang mot nua so lan khong phai
                     # hoc cua xe. Lan nao cung dat dung hoc cua no thi bo nao
@@ -105,17 +121,17 @@ def start_states(bw, unit, rng, mix, station_drift):
                         x = d.x + dist * math.cos(d.theta)
                         y = d.y + dist * math.sin(d.theta)
                         th = d.theta + rng.gauss(0.0, 0.15 + 1.6 * hard)
-                        batt = rng.uniform(0.05, 0.14)
+                        batt = rng.uniform(0.05, 0.19)
                     else:
                         depth = 0.16 - 0.14 * hard
                         x = d.x - depth * math.cos(d.theta)
                         y = d.y - depth * math.sin(d.theta)
                         th = d.theta + rng.gauss(0.0, 0.03 + 0.25 * hard)
-                        batt = rng.uniform(0.04, 0.12)
+                        batt = rng.uniform(0.04, 0.19)
             else:
                 x, y, th = _free_pose(w, rng, placed)
                 batt = (rng.uniform(0.05, P.BATT_LOW - 0.005)
-                        if phase == "pin-yeu" else rng.uniform(0.25, 0.95))
+                        if phase == "pin-yeu" else rng.uniform(0.22, 0.95))
 
             placed.append((x, y))
             sx, sy, sth = home.x, home.y, home.theta
@@ -124,16 +140,17 @@ def start_states(bw, unit, rng, mix, station_drift):
                 sx += drift * math.cos(ang)
                 sy += drift * math.sin(ang)
                 sth += rng.gauss(0.0, 0.12 * drift)
-            out[u] = (x, y, th, batt, sx, sy, sth)
+            out[u] = (x, y, th, batt, sx, sy, sth, (tb, tc, valid))
 
     for rec in out:
-        x, y, th, batt, sx, sy, sth = rec
+        x, y, th, batt, sx, sy, sth, task = rec
         xs.append(x)
         ys.append(y)
         ths.append(th)
         batts.append(batt)
         sts.append((sx, sy, sth))
-    return xs, ys, ths, batts, sts
+        tasks.append(task)
+    return xs, ys, ths, batts, sts, tasks
 
 
 class Rollout:
@@ -159,8 +176,9 @@ class Rollout:
     def reset(self, seed, progress, station_drift=2.5):
         """Dat lai ca lo. Cung `seed` thi cung cho dat xe - do la CRN."""
         rng = random.Random(seed * 7919 + 13)
-        xs, ys, ths, batts, sts = start_states(
-            self.bw, self.unit, rng, phase_mix(progress), station_drift)
+        xs, ys, ths, batts, sts, tasks = start_states(
+            self.bw, self.unit, rng, phase_mix(progress), station_drift,
+            progress)
         rep = self.n_pop
         # Tao tren CPU roi moi chuyen sang may: tao THANG tren card lien
         # (DirectML) tu mot danh sach Python la thu no hay khong lam duoc.
@@ -169,7 +187,8 @@ class Rollout:
         self.sim.t = 0.0
         # Khong dung `zero_()`: phep tai cho tren kieu bool la thu card
         # lien hay tu choi, va no tu choi bang mot cau 'unknown error'.
-        self.sim.beacon_off = torch.zeros_like(self.sim.beacon_off)
+        self.sim.reset_beacons()
+        self.sim.seen = torch.zeros_like(self.sim.seen)
         self.sim._cursor = 0.0
         self.sim._rev = 0
         self.sim.place(torch.arange(self.sim.R).to(self.device),
@@ -179,7 +198,13 @@ class Rollout:
         # bat nguoi ta di lam mot vong khong.
         ins, idok, _ = self.sim.contact()
         self.sim.in_slot, self.sim.id_ok, self.sim.charging = ins, idok, idok
+        self.sim.task_beacons = t([float(a[0]) for a in tasks])
+        self.sim.task_charges = t([float(a[1]) for a in tasks])
+        # "dang-sac": dang o giua mot lan sac hop le - chi khi that su co dien.
+        self.sim.charge_valid = (t([1.0 if a[2] else 0.0 for a in tasks]) > 0.5) \
+            & idok
         self.rw = BatchReward(self.sim)
+        self._pre = self.rw.complete > 0.5
         self.docks = torch.zeros(self.sim.R, P.N_DOCK_CANDIDATES, 4,
                                  device=self.device)
 
@@ -193,10 +218,11 @@ class Rollout:
         for _ in range(steps):
             if s.lidar_step():
                 self.docks = D.detect(s.scan_r, s.scan_b, s.scan_ok)
+            s.cover()
             obs = PC.build(s, self.docks)
             if collect_obs:
                 # Cong don bang so thuc 32 bit roi moi doi sang 64 bit tren
-                # CPU o cuoi: card lien khong co so thuc 64 bit, ma 48 dau
+                # CPU o cuoi: card lien khong co so thuc 64 bit, ma 64 dau
                 # vao deu nam trong [-1;1] nen 32 bit thua do chinh xac.
                 s1 = obs.sum(0)
                 s2 = (obs * obs).sum(0)
@@ -220,4 +246,14 @@ class Rollout:
                     wrong=float(v(self.rw.wrong).sum(1).mean()),
                     falls=float(v(self.rw.fell).sum(1).mean()),
                     flats=float(v(self.rw.flat).sum(1).mean()),
-                    beacons=float(v(self.rw.beacons).sum(1).mean()))
+                    beacons=float(v(self.rw.beacons).sum(1).mean()),
+                    charges_ok=float(v(self.rw.charges_ok).sum(1).mean()),
+                    cells=float(v(self.rw.cells).sum(1).mean()),
+                    complete=float(v(self._complete()).sum(1).mean()),
+                    clawed=float(v(self.rw.clawed).sum(1).mean()))
+
+    def _complete(self):
+        """Xe lam xong de bai TRONG lan chay nay (khong tinh xe da xong san)."""
+        s = self.sim
+        return ((self.rw.complete > 0.5) & (s.task_beacons >= P.TASK_BEACONS)
+                & (s.task_charges >= P.TASK_CHARGES) & ~self._pre).float()

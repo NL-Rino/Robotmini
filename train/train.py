@@ -50,7 +50,8 @@ def _eval_one(task):
     osum = np.zeros(pol.n_in)
     osq = np.zeros(pol.n_in)
     on = 0
-    st = dict(charged=0.0, wrong=0, falls=0, flats=0, beacons=0)
+    st = dict(charged=0.0, wrong=0, falls=0, flats=0, beacons=0,
+              charges_ok=0, cells=0, complete=0)
     for s in seeds:
         r = rollout(pol, s, steps=steps, n_robots=n_robots, progress=progress)
         total += r.score
@@ -62,6 +63,9 @@ def _eval_one(task):
         st["falls"] += r.falls
         st["flats"] += r.flats
         st["beacons"] += r.beacons
+        st["charges_ok"] += r.charges_ok
+        st["cells"] += r.cells
+        st["complete"] += r.complete
     return idx, sign, total / len(seeds), osum, osq, on, st
 
 
@@ -87,8 +91,8 @@ def load_state(path, pol, opt):
     return int(d["gen"]), float(d["best"]), json.loads(str(d["cfg"]))
 
 
-def train(out="runs/thu1", hidden=16, pop=32, sigma=0.05, lr=0.02,
-          weight_decay=0.005, steps=600, robots=3, episodes=2, gens=1000,
+def train(out="runs/thu1", hidden=48, pop=32, sigma=0.05, lr=0.02,
+          weight_decay=0.005, steps=1200, robots=3, episodes=2, gens=1000,
           jobs=0, resume=None, curriculum_gens=600, eval_every=20,
           quiet=False, seed=0, init=None):
     os.makedirs(out, exist_ok=True)
@@ -172,7 +176,8 @@ def train(out="runs/thu1", hidden=16, pop=32, sigma=0.05, lr=0.02,
             osum = np.zeros(pol.n_in)
             osq = np.zeros(pol.n_in)
             on = 0
-            agg = dict(charged=0.0, wrong=0, falls=0, flats=0, beacons=0)
+            agg = dict(charged=0.0, wrong=0, falls=0, flats=0, beacons=0,
+                       charges_ok=0, cells=0, complete=0)
             for idx, sign, sc, s1, s2, n_obs, st in results:
                 (sp if sign > 0 else sm)[idx] = sc
                 osum += s1
@@ -199,7 +204,8 @@ def train(out="runs/thu1", hidden=16, pop=32, sigma=0.05, lr=0.02,
                        grad=round(float(np.linalg.norm(g)), 4),
                        charged=round(agg["charged"], 3), wrong=agg["wrong"],
                        falls=agg["falls"], flats=agg["flats"],
-                       beacons=agg["beacons"])
+                       beacons=agg["beacons"], charges_ok=agg["charges_ok"],
+                       cells=agg["cells"], complete=agg["complete"])
 
             if gen % eval_every == 0 or gen == gen0 + 1:
                 ev = evaluate(pol, HOLDOUT, steps=steps, n_robots=robots,
@@ -209,6 +215,9 @@ def train(out="runs/thu1", hidden=16, pop=32, sigma=0.05, lr=0.02,
                 rec["eval_falls"] = ev.falls
                 rec["eval_flats"] = ev.flats
                 rec["eval_wrong"] = ev.wrong
+                rec["eval_beacons"] = ev.beacons
+                rec["eval_charges_ok"] = ev.charges_ok
+                rec["eval_complete"] = ev.complete
                 if ev.score > best:
                     best = ev.score
                     pol.save(os.path.join(out, "best.npz"),
@@ -224,7 +233,8 @@ def train(out="runs/thu1", hidden=16, pop=32, sigma=0.05, lr=0.02,
             if not quiet:
                 line = (f"the he {gen:5d}  diem {mean_score:8.1f}  "
                         f"{rec['secs']:5.1f}s  giao trinh {progress:4.2f}  "
-                        f"sac {agg['charged']:.2f}  roi {agg['falls']}  "
+                        f"cham {agg['beacons']}  sac-du {agg['charges_ok']}  "
+                        f"xong {agg['complete']}  roi {agg['falls']}  "
                         f"het pin {agg['flats']}  nham {agg['wrong']}")
                 if "eval" in rec:
                     line += f"  || do rieng {rec['eval']:8.1f}"
@@ -244,12 +254,12 @@ def train(out="runs/thu1", hidden=16, pop=32, sigma=0.05, lr=0.02,
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Nuoi bo nao bang ES")
     ap.add_argument("--out", default="runs/thu1")
-    ap.add_argument("--hidden", type=int, default=16)
+    ap.add_argument("--hidden", type=int, default=48)
     ap.add_argument("--pop", type=int, default=32)
     ap.add_argument("--sigma", type=float, default=0.05)
     ap.add_argument("--lr", type=float, default=0.02)
     ap.add_argument("--weight-decay", type=float, default=0.005)
-    ap.add_argument("--steps", type=int, default=600)
+    ap.add_argument("--steps", type=int, default=1200)
     ap.add_argument("--robots", type=int, default=3)
     ap.add_argument("--episodes", type=int, default=2)
     ap.add_argument("--gens", type=int, default=1000)

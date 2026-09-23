@@ -16,10 +16,13 @@ import math
 import random
 import time
 
+import numpy as np
+
 from . import params as P
 from . import sensors
 from . import dock_detector
 from . import perception
+from .coverage import Grid
 from .geometry import point_segment_distance, wrap_pi_scalar
 from .robot import Robot
 from .world import make_fleet_map
@@ -88,7 +91,8 @@ class RunReport:
 class FleetSim:
     def __init__(self, world=None, n_robots=5, seed=0, dt=P.DT,
                  rescue_seconds=None, log_limit=4000):
-        self.world = world if world is not None else make_fleet_map(seed)
+        self.world = (world if world is not None
+                      else make_fleet_map(seed, n_docks=max(3, n_robots)))
         self.dt = float(dt)
         self.seed = seed
         self.rescue_seconds = rescue_seconds
@@ -120,6 +124,12 @@ class FleetSim:
         self.robot_ids = [r.id for r in self.robots]
         self._cands = {r.id: [] for r in self.robots}
         self._disabled_since = {r.id: None for r in self.robots}
+
+        # Luoi "da nhin thay cho nao": moi xe mot ban rieng. Xe A di het
+        # tang tren khong lam xe B duoc diem kham pha.
+        self.grid = Grid(self.world.bounds)
+        for r in self.robots:
+            r.seen_cells = np.zeros(self.grid.n, dtype=bool)
 
         # Doc tiep dien ngay tu buoc 0. Xe dang nam trong hoc cua no that,
         # nen dau vao "dang cam" va "hoc phat tin hieu" phai dung ngay tu
@@ -156,6 +166,8 @@ class FleetSim:
             r.battery = float(battery)
             r.low_lamp = r.battery < P.BATT_LOW
         r.dist_since_charge = 0.0
+        r.charge_valid = False
+        r.new_area = 0.0
 
         d = self.home[rid] if station is None else station
         sx, sy, sth = d.x, d.y, d.theta
@@ -188,6 +200,11 @@ class FleetSim:
             d = point_segment_distance(x, y, self.world.static_segments)
             if d.size and float(d.min()) < P.BODY_RADIUS + 0.10:
                 continue
+            # Chan ban ghe va nguoi: dat xe de len chan ghe thi buoc dau
+            # tien da la mot cu va.
+            if any(math.hypot(x - cx, y - cy) < P.BODY_RADIUS + cr + 0.08
+                   for cx, cy, cr in self.world.solid_circles()):
+                continue
             if any(math.hypot(x - r.x, y - r.y) < 2 * P.BODY_RADIUS + 0.1
                    for r in self.robots):
                 continue
@@ -198,21 +215,37 @@ class FleetSim:
 
     # ------------------------------------------------------------------ cam nhan
     def _circles_for(self, robot):
-        out = self.world.mover_circles()
+        """Thu CHAN DUONG xe: chan ban ghe, than nguoi, va cac xe khac."""
+        out = self.world.solid_circles()
+        for o in self.robots:
+            if o.id != robot.id:
+                out.append(o.as_circle())
+        return out
+
+    def _seen_by(self, robot):
+        """Thu LiDAR NHIN THAY. Khac cai tren o cho nguoi: quet thay HAI CAI
+        CHAN, mot cai nhap nhay theo nhip buoc, chu khong phai mot khoi
+        tron; con va cham thi van tinh bang than nguoi."""
+        out = self.world.lidar_circles()
         for o in self.robots:
             if o.id != robot.id:
                 out.append(o.as_circle())
         return out
 
     def observe(self):
-        """Doc cam bien cua tat ca cac xe, tra ve {id: vector 48 so}."""
+        """Doc cam bien cua tat ca cac xe, tra ve {id: vector 64 so}."""
         obs = {}
         for r in self.robots:
-            circles = self._circles_for(r)
+            circles = self._seen_by(r)
             scan = r.lidar.update(self.dt, r.pose(), r.odom_pose(),
                                   self.world.static_segments, circles, self.t)
+            r.new_area = 0.0
             if scan is not None:
                 self._cands[r.id] = dock_detector.detect(scan)
+                # Vong quet vua xong: danh dau nhung o no nhin thay, va dem
+                # so o LAN DAU duoc nhin thay.
+                moi = self.grid.new_cells(r.seen_cells, r.x, r.y, r.th, scan)
+                r.new_area = moi / 12.0
             cliff = sensors.cliff_sensors(self.world, r.x, r.y, r.th)
             irb = sensors.ir_beacon(self.world, r.x, r.y, r.th, circles)
             ird = sensors.ir_dock(self.world, r.x, r.y, r.th, circles)
@@ -232,6 +265,9 @@ class FleetSim:
             r.step_motion(cl, cr, dt, self.world, circles)
             if r.fallen and not was_fallen:
                 self._event(r, "roi khoi san")
+
+        self._collect_beacons()
+        self._respawn_beacons()
 
         for r in self.robots:
             was_charge = r.charging
@@ -257,6 +293,63 @@ class FleetSim:
         self._maybe_rescue()
         self.t += dt
         self.steps += 1
+
+    def _collect_beacons(self):
+        """Xe cham vao cham goi dang sang thi an no.
+
+        De o DAY chu khong o ham phan thuong: so cham da an la mot thu robot
+        that biet ve chinh no, va no la mot trong 64 dau vao.
+        """
+        for r in self.robots:
+            if r.disabled():
+                continue
+            for b in self.world.beacons:
+                if b.on and math.hypot(r.x - b.x, r.y - b.y) < P.BEACON_RADIUS:
+                    b.on = False
+                    b.wait = self._rng.uniform(*P.BEACON_RESPAWN)
+                    r.task_beacons += 1
+                    self._event(r, f"an cham goi ({r.task_beacons}"
+                                   f"/{P.TASK_BEACONS})")
+                    break
+
+    def _respawn_beacons(self):
+        """Cham da an het gio cho thi sang lai o mot cho moi, xa cac xe.
+
+        Can vi ca dan xe dung chung mot bo cham: khong sang lai thi ba xe
+        tranh nhau nam cham, khong xe nao an du nam.
+        """
+        for b in self.world.beacons:
+            if b.on or b.wait > 0.0:
+                continue
+            spot = self.beacon_spot(self._rng)
+            if spot is None:
+                b.wait = 1.0
+                continue
+            b.x, b.y = spot
+            b.on = True
+
+    def beacon_spot(self, rng, tries=40):
+        """Mot cho dat cham goi: tren san, khong sat tuong, xa moi xe."""
+        x0, y0, x1, y1 = self.world.bounds
+        legs = self.world.solid_circles()
+        for _ in range(tries):
+            x = rng.uniform(x0 + 0.5, x1 - 0.5)
+            y = rng.uniform(y0 + 0.5, y1 - 0.5)
+            if not self.world.on_floor(x, y):
+                continue
+            d = point_segment_distance(x, y, self.world.static_segments)
+            if d.size and float(d.min()) < 0.35:
+                continue
+            if any(math.hypot(x - cx, y - cy) < cr + 0.25
+                   for cx, cy, cr in legs):
+                continue
+            if any(math.hypot(x - r.x, y - r.y) < 1.5 for r in self.robots):
+                continue
+            if any(o.on and math.hypot(x - o.x, y - o.y) < 1.0
+                   for o in self.world.beacons):
+                continue
+            return x, y
+        return None
 
     def _event(self, robot, text):
         if len(self.log) < self.log_limit:

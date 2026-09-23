@@ -1,8 +1,13 @@
 # -*- coding: utf-8 -*-
 """Mo phong ban v1 chay THEO LO.
 
-Cung can phong, cung vat ly, cung 48 dau vao nhu `sim/` - chi khac mot dieu:
+Cung can nha, cung vat ly, cung 64 dau vao nhu `sim/` - chi khac mot dieu:
 144 con xe buoc cung mot luc thay vi lan luot tung con.
+
+Nhung thu cua ban "can nha" cung o day: chan ban ghe (hinh tron dung yen),
+nguoi la hai cai chan nhap nhay tren LiDAR, luoi kham pha theo tung xe, cham
+goi an roi sang lai cho khac, va dem lan sac HOP LE (cam luc < 20%, nam den
+khi day).
 
 Do la toan bo bi mat cua viec dung duoc GPU. Ban `sim/` khong cham vi numpy
 cham; no cham vi moi buoc la vai chuc phep tinh ti hon tren mang 64 phan tu,
@@ -16,6 +21,7 @@ import math
 import torch
 
 from sim import params as P
+from sim.coverage import ALONG, RAY_STEP
 
 from . import ops
 from .ops import hypot
@@ -144,11 +150,33 @@ class BatchSim:
                                    device=device)
         self.new_scan = False
         self._lidar_step = 2.0 * math.pi / N_LIDAR
-        # Den goi da bi nhat, theo TUNG XE. Ban v1 tat cai den tren mat bang,
-        # nhung o day mot mat bang duoc P ban sao dung chung: ban sao nao toi
-        # truoc se tat den cua ca P ban, va chung so ngau nhien mat nghia.
-        self.beacon_off = torch.zeros(self.R, self.w.beacon.shape[1],
-                                      dtype=torch.bool, device=device)
+        # Cham goi theo TUNG XE. Ban v1 tat cai den tren mat bang, nhung o
+        # day mot mat bang duoc P ban sao dung chung: ban sao nao toi truoc
+        # se tat den cua ca P ban, va chung so ngau nhien mat nghia.
+        self.reset_beacons()
+
+        # Tien do de bai, theo tung xe (xem sim/params.py muc "de bai").
+        self.task_beacons = z(self.R)
+        self.task_charges = z(self.R)
+        self.charge_valid = b()
+
+        # Luoi kham pha: moi xe mot ban. Them MOT cot rac o cuoi cho nhung
+        # tia khong hop le, de khong phai cat mang theo mat na.
+        f = self.w.floor
+        self.cov_x0, self.cov_y0 = f[:, 0].clone(), f[:, 1].clone()
+        self.cov_nx = max(1, int(math.ceil(float((f[:, 2] - f[:, 0]).max())
+                                           / P.COVER_CELL)))
+        self.cov_ny = max(1, int(math.ceil(float((f[:, 3] - f[:, 1]).max())
+                                           / P.COVER_CELL)))
+        self.cov_n = self.cov_nx * self.cov_ny
+        self.seen = z(self.R, self.cov_n + 1)
+        self.new_area = z(self.R)
+
+    def reset_beacons(self):
+        b = self.w.beacon
+        self.bpos = b[..., 0:2].clone()
+        self.bon = b[..., 2] > 0.5
+        self.bwait = torch.zeros_like(b[..., 2])
 
     # --------------------------------------------------- chung so ngau nhien
     def _randn(self, *tail):
@@ -193,8 +221,9 @@ class BatchSim:
         for a in (self.vl, self.vr, self.cmd, self.bump):
             xoa(a, 0.0)
         for a in (self.stranded, self.fallen, self.in_slot, self.id_ok,
-                  self.charging):
+                  self.charging, self.charge_valid):
             xoa(a, False)
+        xoa(self.new_area, 0.0)
         if battery is not None:
             dat(self.batt, battery)
             if full:
@@ -224,8 +253,13 @@ class BatchSim:
 
     # ------------------------------------------------------------------ vat ly
     def _circles(self):
-        """Nguoi di lai + cac xe KHAC trong cung the gioi."""
-        return self.w.mover
+        """Thu CHAN DUONG xe: chan ban ghe + than nguoi."""
+        return torch.cat((self.w.legs, self.w.mover), dim=1)
+
+    def _lidar_circles(self):
+        """Thu LiDAR NHIN THAY: chan ban ghe + HAI CHAN moi nguoi (mot cai
+        nhap nhay theo nhip buoc), khong phai mot khoi tron o than."""
+        return torch.cat((self.w.legs, self.w.mover_legs), dim=1)
 
     def _collide(self):
         seg = self.w.seg
@@ -353,6 +387,16 @@ class BatchSim:
         self.vl = torch.where(self.fallen, torch.zeros_like(self.vl), self.vl)
         self.vr = torch.where(self.fallen, torch.zeros_like(self.vr), self.vr)
 
+        # Cham goi: an truoc buoc pin, dung thu tu cua sim/fleet.py.
+        # So ngau nhien boc MOI BUOC, du co can hay khong: neu chi boc khi
+        # "co xe nao vua an", thi chia quan the ra hai may (duo.py) se lam
+        # hai may boc so khac nhau va chung so ngau nhien vo.
+        nb = self.bon.shape[1]
+        u = self._rand(2 * nb)
+        got = self.take_beacon(P.BEACON_RADIUS, ~(self.stranded | self.fallen),
+                               u[:, :nb])
+        self._respawn_beacons(u[:, nb:])
+
         ins, idok, _wd = self.contact()
         was_slot, was_charge = self.in_slot, self.charging
         self.in_slot, self.id_ok, self.charging = ins, idok, idok
@@ -362,10 +406,18 @@ class BatchSim:
         drain = P.BATT_IDLE_DRAIN + P.BATT_MOVE_DRAIN * speed
         drain = torch.where(self.stranded | self.fallen,
                             torch.zeros_like(drain), drain)
+        # Lan sac HOP LE: luc vua cam, pin (truoc buoc nap) phai < 20%.
+        # Rut ra khi chua day -> mat. Day 100% -> dem mot lan.
+        just_on = self.charging & ~was_charge
+        self.charge_valid = torch.where(just_on, prev_b < P.BATT_LOW,
+                                        self.charge_valid) & self.charging
         self.batt = torch.where(
             self.charging, (self.batt + P.BATT_CHARGE_RATE * self.dt).clamp(max=1.0),
             (self.batt - drain * self.dt).clamp(min=0.0))
         d_batt = (self.batt - prev_b).clamp(min=0.0)
+        done = self.charge_valid & (self.batt >= P.BATT_FULL)
+        self.task_charges = self.task_charges + done.float()
+        self.charge_valid = self.charge_valid & ~done
 
         was_flat = self.stranded
         self.stranded = torch.where(self.batt <= 0.0,
@@ -393,7 +445,7 @@ class BatchSim:
         self.w.step_dynamics(self.dt, self._pyrng)
         return dict(bump=new_bump, fell=just_fell, flat=just_flat,
                     d_batt=d_batt, wrong=ins & ~idok & ~was_slot,
-                    latch=just_charge)
+                    latch=just_charge, beacon=got, charge_done=done)
 
     # ------------------------------------------------------------------ LiDAR
     def lidar_step(self):
@@ -414,7 +466,8 @@ class BatchSim:
         ang = self.th[:, None] + local[None, :]
 
         d = raycast(self.x, self.y, ang, self.w.seg, self.w.seg_e, P.LIDAR_MAX)
-        dc = raycast_circles(self.x, self.y, ang, self._circles(), P.LIDAR_MAX)
+        dc = raycast_circles(self.x, self.y, ang, self._lidar_circles(),
+                             P.LIDAR_MAX)
         d = torch.minimum(d, dc)
         d = d * (1.0 + self._randn(d.shape[1]) * P.LIDAR_NOISE)
         ok = (d >= P.LIDAR_MIN) & (d < P.LIDAR_MAX - 1e-6)
@@ -491,19 +544,81 @@ class BatchSim:
         return self._ir(ex, ey, self.w.dock_powered)
 
     def ir_beacon(self):
-        b = self.w.beacon
-        return self._ir(b[..., 0], b[..., 1], (b[..., 2] > 0.5) & ~self.beacon_off)
+        return self._ir(self.bpos[..., 0], self.bpos[..., 1], self.bon)
 
-    def take_beacon(self, radius):
-        """Xe nao vua cham vao mot den goi dang sang; tat den do cho RIENG xe do."""
-        b = self.w.beacon
-        near = ((b[..., 2] > 0.5) & ~self.beacon_off
-                & (hypot(b[..., 0] - self.x[:, None],
-                               b[..., 1] - self.y[:, None]) < radius))
+    def take_beacon(self, radius, live=None, u=None):
+        """Xe nao vua cham vao mot cham goi dang sang: tat cham do cho RIENG
+        xe do, hen gio sang lai o cho khac, va cong vao tien do de bai.
+
+        `u`: so ngau nhien [0,1) (R, so cham) de hen gio; khong dua thi tu boc.
+        """
+        near = self.bon & (hypot(self.bpos[..., 0] - self.x[:, None],
+                                 self.bpos[..., 1] - self.y[:, None]) < radius)
+        if live is not None:
+            near = near & live[:, None]
         got, wi = ops.any_and_first(near)
-        # moi buoc chi nhat MOT den, giong ban v1
-        self.beacon_off = self.beacon_off | ops.one_hot_at(near, wi)
+        # moi buoc chi an MOT cham, giong ban v1
+        off = ops.one_hot_at(near, wi)
+        if u is None:
+            u = self._rand(self.bon.shape[1])
+        lo, hi = P.BEACON_RESPAWN
+        self.bon = self.bon & ~off
+        self.bwait = torch.where(off, lo + (hi - lo) * u, self.bwait)
+        self.task_beacons = self.task_beacons + got.float()
         return got
+
+    def _respawn_beacons(self, u=None):
+        """Cham da an het gio cho thi sang lai o mot cho moi, xa xe >= 1,5 m."""
+        off = ~self.bon
+        self.bwait = torch.where(off, (self.bwait - self.dt).clamp(min=0.0),
+                                 self.bwait)
+        due = off & (self.bwait <= 0.0)
+        if u is None:
+            u = self._rand(self.bon.shape[1])
+        ns = self.w.spots.shape[1]
+        k = (u * ns).floor().clamp(0.0, ns - 1.0).long()
+        px = self.w.spots[..., 0].gather(1, k)
+        py = self.w.spots[..., 1].gather(1, k)
+        far = hypot(px - self.x[:, None], py - self.y[:, None]) >= 1.5
+        put = due & far
+        self.bpos = torch.where(put[..., None], torch.stack((px, py), -1),
+                                self.bpos)
+        self.bon = self.bon | put
+
+    # ------------------------------------------------------------------ kham pha
+    def cover(self):
+        """Sau MOI VONG QUET: danh dau o nhin thay, dem o LAN DAU thay.
+
+        Dung y `sim/coverage.py`: mot tia tren bon, ba diem tren moi tia,
+        vi tri THAT cua xe. Tra ve (va giu o `new_area`) so o moi / 12.
+        """
+        if not self.new_scan:
+            self.new_area = torch.zeros_like(self.new_area)
+            return self.new_area
+        r = self.scan_r[:, ::RAY_STEP]
+        ok = self.scan_ok[:, ::RAY_STEP]
+        ang = self.th[:, None] + self.scan_b[:, ::RAY_STEP]
+        c, sn = torch.cos(ang), torch.sin(ang)
+        cols = []
+        for f in ALONG:
+            px = self.x[:, None] + c * r * f
+            py = self.y[:, None] + sn * r * f
+            cx = ((px - self.cov_x0[:, None]) / P.COVER_CELL).floor() \
+                .clamp(0.0, self.cov_nx - 1.0)
+            cy = ((py - self.cov_y0[:, None]) / P.COVER_CELL).floor() \
+                .clamp(0.0, self.cov_ny - 1.0)
+            i = cy * self.cov_nx + cx
+            cols.append(torch.where(ok, i, torch.full_like(i, float(self.cov_n))))
+        idx = torch.cat(cols, dim=1).long()
+        before = self.seen[:, :self.cov_n].sum(1)
+        self.seen = self.seen.scatter(1, idx, torch.ones_like(idx,
+                                                             dtype=self.seen.dtype))
+        moi = self.seen[:, :self.cov_n].sum(1) - before
+        self.new_area = moi / 12.0
+        return self.new_area
+
+    def cover_fraction(self):
+        return self.seen[:, :self.cov_n].sum(1) / float(self.cov_n)
 
     def _ir(self, ex, ey, on):
         dx = ex - self.x[:, None]
@@ -518,7 +633,7 @@ class BatchSim:
         ang = torch.atan2(dy.gather(1, g).squeeze(1), dx.gather(1, g).squeeze(1))
         hit = raycast(self.x, self.y, ang[:, None], self.w.seg, self.w.seg_e,
                       1e4)[:, 0]
-        hitc = raycast_circles(self.x, self.y, ang[:, None], self._circles(),
+        hitc = raycast_circles(self.x, self.y, ang[:, None], self._lidar_circles(),
                                1e4)[:, 0]
         seen = seen & (torch.minimum(hit, hitc) >= best - 0.02)
         return seen, wrap(ang - self.th)

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Dung vector 48 dau vao cho ca lo cung mot luc.
+"""Dung vector 64 dau vao cho ca lo cung mot luc.
 
 Phai ra DUNG cai ma `sim/perception.py` ra, chi khac la 144 hang thay vi
 mot. Bo cuc, thu tu, cach chuan hoa - tat ca deu chep tu ban v1, vi bo nao
@@ -13,7 +13,7 @@ import torch
 
 from sim import params as P
 from sim.perception import (I_BATTERY, I_CLIFF, I_CONTACT, I_DOCKS, I_FANS,
-                            I_IR, I_MOTION, I_STATION, DOCK_RANGE_NORM,
+                            I_IR, I_MOTION, I_STATION, I_TASK, DOCK_RANGE_NORM,
                             STATION_RANGE_NORM)
 
 from .ops import hypot
@@ -109,6 +109,13 @@ def build(sim, docks):
     v[:, I_MOTION + 3] = sim.cmd[:, 1]
     v[:, I_MOTION + 4] = sim.bump
     _mark("chuyen dong", v)
+
+    # Tien do de bai: robot that tu dem duoc may thu nay.
+    v[:, I_TASK + 0] = (sim.task_beacons / float(P.TASK_BEACONS)).clamp(max=1.0)
+    v[:, I_TASK + 1] = (sim.task_charges / float(P.TASK_CHARGES)).clamp(max=1.0)
+    v[:, I_TASK + 2] = sim.charge_valid.float()
+    v[:, I_TASK + 3] = sim.new_area.clamp(max=1.0)
+    _mark("tien do de bai", v)
     return v
 
 

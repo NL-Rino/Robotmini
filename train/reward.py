@@ -17,6 +17,14 @@ Va mot nguyen tac cua rieng ban nay:
   hoc. Ba viec do de bo nao tu tim ra - dung nhu yeu cau "cai nay ko day".
   So hang dan duong duy nhat la khoang cach toi DIEM DUNG TRUOC MIENG HOC,
   va no chi bat khi den bao sac dang sang.
+
+DE BAI (xem sim/params.py muc "de bai"): mot lan chay HOAN THANH khi xe da
+an du 5 cham goi VA sac du 3 lan hop le. Mot lan sac hop le: cam vao luc
+pin DUOI 20%, va nam yen cho toi khi DAY 100%. Rut ra giua chung thi khong
+duoc gi - ke ca phan da tra dan trong luc sac cung bi THU LAI.
+
+Va: moi o san nha lan dau lot vao tam quet LiDAR duoc cong mot it. Do la
+cai day xe di qua cua sang phong khac thay vi quanh quan mot cho.
 """
 
 import math
@@ -45,11 +53,15 @@ SPIN = -0.01          # phat nhe viec quay tit tai cho
 # truoc khong co chung va bo nao tim ra ngay: ngoi trong hoc quay tit tai
 # cho duoc 994 diem, lac ra lac vao duoc 1.300 diem, trong khi di lam viec
 # that chi duoc ~300. No khong hong - no dang giai dung cai bai toan ta ra.
-CHARGE_ENERGY = 150.0     # nhan voi phan pin nap duoc trong buoc do
-CHARGE_LATCH = 30.0       # thuong mot lan khi vua cam dung hoc
-AWAY_DIST = 1.5           # phai roi hoc xa chung nay thi lan cam sau moi duoc
-                          # tra tien. Khong co no thi xe lac ra lac vao an
-                          # +30 moi lan, 42 lan trong mot tap.
+#
+# Gio chi tra cho lan sac HOP LE (cam luc pin < 20%). Tien tra dan trong luc
+# sac chi la "tien tam ung": rut ra truoc khi day thi bi thu lai het, dung
+# nhu de bai "trong luc sac chay ra thi khong duoc cong diem".
+CHARGE_ENERGY = 60.0      # nhan voi phan pin nap duoc - tam ung
+CHARGE_LATCH = 20.0       # tam ung mot lan khi vua cam dung hoc, pin < 20%
+CHARGE_DONE = 60.0        # tra THAT khi day 100%: mot lan sac duoc tinh
+AWAY_DIST = 1.5           # (giu ten cu cho kiem thu; gio hang rao chinh la
+                          # dieu kien pin < 20% luc cam)
 FULL_ENOUGH = 0.97
 LOITER = -0.10            # moi buoc con nam trong hoc khi pin da day
 LOITER_CAP = -80.0        # tran cua khoan tren. Phai co tran: neu de no vuot
@@ -65,9 +77,17 @@ WRONG_DOCK = -4.0         # cam nham: chi phat NHE, vi do la cach hop le
 SPIN_IN_DOCK = -2.5
 SPIN_FREE = 0.35          # phan cua toc do quay toi da duoc quay tu do
 
-# den goi
+# den goi: tra theo SO CHAM DA AN ma robot tu dem (sim/fleet.py an cham)
 BEACON = 25.0
-BEACON_RADIUS = 0.40
+BEACON_EXTRA = 3.0        # an qua 5 cham thi van co chut it, nhung khong dang
+BEACON_RADIUS = P.BEACON_RADIUS
+
+# kham pha: moi o 50 cm lan dau lot vao tam quet. Can nha 432 o, nen di het
+# ca nha cung chi ~130 - khong bang lam xong de bai.
+EXPLORE = 0.3
+
+# lam xong de bai: 5 cham + 3 lan sac hop le
+COMPLETE = 300.0
 
 # dan duong ve tram, chi khi den bao sac dang sang
 HOMING = 3.0
@@ -84,7 +104,9 @@ class RewardTracker:
     __slots__ = ("rid", "home", "prev_dist", "prev_batt", "prev_bumps",
                  "prev_wrong", "total", "charged", "wrong", "fell", "flat",
                  "beacons", "homing_on", "budget", "max_away", "loiter_paid",
-                 "spin_in_dock", "cliff_paid")
+                 "spin_in_dock", "cliff_paid", "prev_beacons",
+                 "prev_charges", "advance", "charges_ok", "cells",
+                 "complete", "clawed")
 
     def __init__(self, rid, home_dock, robot):
         self.rid = rid
@@ -109,6 +131,16 @@ class RewardTracker:
         self.loiter_paid = 0.0
         self.spin_in_dock = 0.0
         self.cliff_paid = 0.0
+        # Tien do de bai tinh tu LUC BAT DAU danh gia: giao trinh co the cap
+        # san "da an 3 cham, da sac 2 lan" - phan do khong duoc tra lai.
+        self.prev_beacons = robot.task_beacons
+        self.prev_charges = robot.task_charges
+        self.advance = 0.0        # tien tam ung cua lan sac dang do
+        self.charges_ok = 0
+        self.cells = 0
+        self.complete = int(robot.task_beacons >= P.TASK_BEACONS
+                            and robot.task_charges >= P.TASK_CHARGES)
+        self.clawed = 0.0
 
     def _dist(self, robot):
         ax, ay = approach_point(self.home)
@@ -163,15 +195,43 @@ class RewardTracker:
                 r += pen
                 self.spin_in_dock -= pen
 
-        # Sac: tra tien theo NANG LUONG nap duoc, nhung moi lan vao hoc chi
-        # co mot han muc, dat luc vua cam. Khong co han muc nay thi xe co the
-        # xa pin roi nap lai ngay trong hoc, moi vong an them mot khoan.
+        # Sac: CHI lan sac hop le (cam luc pin < 20%) moi duoc tam ung theo
+        # nang luong nap. Day 100% -> lan sac duoc tinh, tra CHARGE_DONE.
+        # Rut ra truoc khi day -> thu lai toan bo tien tam ung.
         d_batt = robot.battery - self.prev_batt
-        if robot.charging and d_batt > 0.0 and self.budget > 0.0:
-            pay = min(d_batt, self.budget)
-            r += CHARGE_ENERGY * pay
-            self.budget -= pay
+        if robot.task_charges > self.prev_charges:
+            n = robot.task_charges - self.prev_charges
+            r += CHARGE_DONE * n
+            self.charges_ok += n
+            self.prev_charges = robot.task_charges
+            self.advance = 0.0
+        elif robot.charging and robot.charge_valid and d_batt > 0.0:
+            pay = CHARGE_ENERGY * d_batt
+            r += pay
+            self.advance += pay
+        elif self.advance > 0.0 and not robot.charge_valid:
+            r -= self.advance
+            self.clawed += self.advance
+            self.advance = 0.0
         self.prev_batt = robot.battery
+
+        # Cham goi: robot tu dem trong sim; o day chi doc so dem.
+        if robot.task_beacons > self.prev_beacons:
+            for k in range(self.prev_beacons, robot.task_beacons):
+                r += BEACON if k < P.TASK_BEACONS else BEACON_EXTRA
+            self.beacons += robot.task_beacons - self.prev_beacons
+            self.prev_beacons = robot.task_beacons
+
+        # Kham pha: o moi trong vong quet vua roi.
+        if robot.new_area > 0.0:
+            n = int(round(robot.new_area * 12.0))
+            r += EXPLORE * n
+            self.cells += n
+
+        if (not self.complete and robot.task_beacons >= P.TASK_BEACONS
+                and robot.task_charges >= P.TASK_CHARGES):
+            self.complete = 1
+            r += COMPLETE
 
         # Pin da day ma van nam trong hoc thi bat dau lo von. Day la cau tra
         # loi cho "no cu ngoi yen trong sac": ngoi yen khong con mien phi.
@@ -189,14 +249,6 @@ class RewardTracker:
             r += WRONG_DOCK * (robot.n_wrong_dock - self.prev_wrong)
             self.wrong += robot.n_wrong_dock - self.prev_wrong
             self.prev_wrong = robot.n_wrong_dock
-
-        # den goi
-        for b in world.beacons:
-            if b.on and math.hypot(robot.x - b.x, robot.y - b.y) < BEACON_RADIUS:
-                r += BEACON
-                self.beacons += 1
-                b.on = False
-                break
 
         # dan duong: chi khi den bao sac dang sang, va dan toi DIEM DUNG
         # TRUOC MIENG chu khong phai toi cai hoc. Dan thang toi hoc thi xe
@@ -216,17 +268,16 @@ class RewardTracker:
         return r
 
     def latch_charge(self, robot, was_charging):
-        """Thuong mot lan khi vua cam dung hoc cua minh - NEU da di lam ve.
+        """Tam ung mot lan khi vua cam dung hoc cua minh - NEU pin < 20%.
 
-        Cam vao roi rut ra roi cam lai ngay thi khong duoc gi ca. Muon duoc
-        tra tien lan nua thi phai thuc su roi hoc di xa, tuc la phai lam mot
-        vong viec da.
+        Cam luc pin con nhieu thi khong duoc gi (lan do khong bao gio tinh).
+        Tien nay la tam ung: rut ra truoc khi day thi `step` thu lai.
         """
         if not (robot.charging and not was_charging):
             return 0.0
-        if self.max_away < AWAY_DIST:
+        if not robot.charge_valid:
             return 0.0
         self.max_away = 0.0
-        self.budget = max(0.0, 1.0 - robot.battery)
+        self.advance += CHARGE_LATCH
         self.total += CHARGE_LATCH
         return CHARGE_LATCH

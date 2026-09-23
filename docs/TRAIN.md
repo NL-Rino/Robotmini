@@ -4,6 +4,52 @@ Mạng thì đúng rồi, không phải sửa. Vấn đề nằm ở **cách ch�
 
 ---
 
+## 0. Bản "căn nhà": đề bài mới, phần thưởng mới, mạng to hơn
+
+**Đề bài.** Một lần chạy hoàn thành khi xe ăn đủ **5 chấm gọi** và sạc đủ
+**3 lần hợp lệ** (cắm vào lúc pin < 20%, nằm yên tới khi đầy 100%; rút ra
+giữa chừng thì không tính). Nơi tập là **căn nhà 12 × 9 m bốn phòng** có bàn
+ghế, người đi lại là hai cái chân nhấp nháy - xem `docs/SIM.md` mục 0.
+
+**Phần thưởng** (`train/reward.py`, bản turbo dùng đúng các hằng số đó):
+
+| khoản | điểm | ghi chú |
+|---|---:|---|
+| ăn một chấm gọi | +25 | quá 5 chấm thì chỉ +3 |
+| cắm đúng hộc lúc pin < 20% | +20 | **tạm ứng** |
+| nạp pin trong lần sạc hợp lệ | +60 × phần nạp được | **tạm ứng** |
+| sạc đầy 100% một lần hợp lệ | +60 | trả thật; tạm ứng giữ lại |
+| rút ra trước khi đầy | − toàn bộ tạm ứng | nên chạy ra giữa chừng = 0 điểm |
+| cắm lúc pin ≥ 20% | 0 | không bao giờ được tính |
+| mỗi ô 50 cm lần đầu lọt vào tầm LiDAR | +0,3 | đi hết nhà ~130 điểm |
+| **hoàn thành đề bài** | **+300** | một lần |
+| rơi / hết pin | −150 | như cũ |
+
+Các hàng rào cũ (phạt quay trong hộc, ngồi lì khi đầy, cảnh vực có trần)
+giữ nguyên.
+
+**Giáo trình** thêm hai thứ (`train/rollout.py`):
+
+- **tiến độ cấp sẵn**: mỗi xe bắt đầu với "đã ăn k chấm, đã sạc m lần" ngẫu
+  nhiên, đầu huấn luyện phần lớn chỉ còn thiếu một việc. Đề bài dài vài phút
+  mô phỏng mà một lần đánh giá chỉ 60 giây - không cấp sẵn thì phần thưởng
+  hoàn thành không ai chạm tới, ES không có gì để so. Phần cấp sẵn **không
+  được trả điểm lại**.
+- **pha mới `dang-sac`**: nằm trong hộc của mình giữa một lần sạc hợp lệ -
+  chỗ để học "đừng chạy ra giữa chừng".
+
+**Mạng to hơn.** Mặc định giờ **GRU 64 → 48 → 2 = 16.370 tham số** (bản cũ
+48 → 16 → 2 = 3.154). Chọn được 24 / 32 / 48 / 64 / 96 nơ-ron khi tạo bộ não.
+Nói thẳng cái giá: ES ước lượng gradient bằng quần thể, tham số gấp 5 thì
+cần nhiều thế hệ hơn để hội tụ; quần thể nên ≥ 32 khi dùng 48 nơ-ron.
+
+**Bộ não cũ (48 đầu vào) không nạp được** - app báo rõ và yêu cầu tạo mới.
+
+**Mỗi thế hệ chậm hơn**: 1.200 bước/lần (60 giây) thay vì 400, và nhà to hơn
+nhiều vật cản. Ước chừng chậm 3-4 lần mỗi thế hệ so với trước.
+
+---
+
 ## 1. Chẩn đoán
 
 Bản cũ: quần thể 48, **3 tập mỗi cá thể**, mỗi cá thể chạy trên **3 tập
@@ -78,7 +124,7 @@ mốc so sánh nữa, và phương sai giảm khoảng một nửa. Cũng miễn
 
 ### 2.3 Chuẩn hoá đầu vào
 
-48 đầu vào có phân bố lệch nhau rất xa: đèn báo sạc gần như luôn bằng 0,
+64 đầu vào có phân bố lệch nhau rất xa: đèn báo sạc gần như luôn bằng 0,
 quạt LiDAR nhìn vào tường thì luôn quanh 0,9. Không chuẩn hoá thì mỗi trọng
 số học với một tốc độ khác hẳn nhau.
 
@@ -110,15 +156,16 @@ chỗ có phần thưởng, và trong hàng trăm thế hệ đầu **không m�
 chạm được vào nó. ES không có gì để so sánh. Nó chỉ xáo trọng số.
 
 Cách chữa: đặt xe vào một điểm **bất kỳ** trên chu kỳ, không phải luôn luôn
-ở đầu. Năm pha:
+ở đầu. Sáu pha:
 
 | pha | đặt xe ở đâu | còn phải làm gì |
 |---|---|---|
 | `sap-cam` | lùi dang dở vào một hộc, pin cạn | còn 20 cm nữa |
 | `truoc-mieng` | trước miệng một hộc, pin cạn | còn quay và lùi |
 | `pin-yeu` | bất kỳ đâu, pin dưới ngưỡng | còn tìm đường về |
-| `long-nhong` | bất kỳ đâu, pin còn nhiều | chỉ cần không đâm |
+| `long-nhong` | bất kỳ đâu, pin 22–95% | làm việc, tự biết về khi tụt dưới 20% |
 | `trong-hoc` | trong hộc của mình, pin đầy | học cách ra đi |
+| `dang-sac` | trong hộc, giữa một lần sạc hợp lệ | học nằm yên tới khi đầy |
 
 Những thế hệ đầu dành phần lớn suất cho hai pha cuối bảng, nơi phần thưởng
 chỉ cách vài chục bước. Khá lên tới đâu thì đẩy dần suất về phía đầu bảng.
@@ -227,12 +274,12 @@ float32 và cắt vòng quét vector hoá): còn ~600 µs mỗi bước mỗi xe
 Cài đặt khuyến nghị — đây là mặc định của phần mềm:
 
 ```
-quần thể     24      12 cặp đối gương
-số bước/lần  400     20 giây mô phỏng
+quần thể     24      12 cặp đối gương (48 nơ-ron thì nên 32+)
+số bước/lần  1200    60 giây mô phỏng
 số xe        3       train nhỏ, đánh giá lớn
 số tập       2       ít thôi, vì đã chung hạt giống
 số luồng     3–4
-số nơ-ron   16       GRU 48→16→2, 3.154 tham số
+số nơ-ron   48       GRU 64→48→2, 16.370 tham số
 giáo trình  600      sau ngần này thế hệ thì hết dễ
 ```
 
@@ -242,7 +289,9 @@ Cách ước lượng thời gian, để bạn tự tính lại khi đổi cài 
 một thế hệ = quần thể × số tập × (số bước × số xe × 600 µs) ÷ tăng tốc song song
 ```
 
-Với cài đặt trên, máy tôi đo (4 nhân) ra **13 giây một thế hệ**. Máy bạn 2
+(Các con số dưới đây đo với bản phòng nhỏ, 400 bước. Bản căn nhà 1.200
+bước thì nhân chừng 3-4.) Với cài đặt đó, máy tôi đo (4 nhân) ra **13 giây
+một thế hệ**. Máy bạn 2
 nhân và mỗi nhân chậm hơn chừng hai lần, nên ước chừng **30–45 giây**. Chạy
 qua đêm 10 tiếng ≈ 800–1.200 thế hệ. Hạ `số bước/lần` xuống 250 thì còn
 **20–28 giây**.

@@ -5,7 +5,7 @@ Moi goi deu tu mo ta: mat mot goi khong lam hong goi sau.
 
   RM | ver | loai | ma_xe | _ | seq (u32) | t (f32) | tai
   HELLO  tai = ma hoc sac cua xe (u32)
-  OBS    tai = 48 so f32
+  OBS    tai = 64 so f32 (ban can nha; ban cu 48 so la ver 1)
   CMD    tai = ga trai, ga phai (2 x f32)
   BYE    tai rong
 """
@@ -13,7 +13,7 @@ Moi goi deu tu mo ta: mat mot goi khong lam hong goi sau.
 import struct
 
 MAGIC = b"RM"
-VERSION = 1
+VERSION = 2          # 2: 64 dau vao. Goi ver 1 (48 so) khong con hop le.
 
 T_HELLO = 1
 T_OBS = 2
@@ -23,7 +23,7 @@ T_BYE = 4
 HEADER = "<2sBBBBIf"
 HEADER_SIZE = struct.calcsize(HEADER)   # 16
 
-N_INPUTS = 48
+N_INPUTS = 64        # phai khop sim/params.py N_INPUTS
 OBS_FMT = "<%df" % N_INPUTS
 CMD_FMT = "<2f"
 HELLO_FMT = "<I"

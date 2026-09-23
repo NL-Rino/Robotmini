@@ -35,7 +35,7 @@ from brain.rule_brain import RuleBrain            # noqa: E402
 from sim import params as P                       # noqa: E402
 from sim.fleet import FleetSim                    # noqa: E402
 from sim.world import make_fleet_map              # noqa: E402
-from train.policy import GRUPolicy, PolicyBrain   # noqa: E402
+from train.policy import GRUPolicy, N_IN, PolicyBrain   # noqa: E402
 # `turbo/` can PyTorch; ban v1 thi khong. Ai chi muon chay ban v1 thi khong
 # phai cai PyTorch, nen cho nay hong thi bo qua chu khong duoc lam chet
 # ca phan mem.
@@ -80,6 +80,11 @@ def list_brains():
     return out
 
 
+_OLD_BRAIN = (f"bo nao nay la ban cu (48 dau vao, phong nho). Ban moi co "
+              f"{N_IN} dau vao (can nha, de bai 5 cham + 3 lan sac) nen khong "
+              f"nap duoc - tao bo nao moi roi huan luyen lai.")
+
+
 def load_brain_factory(path):
     """Tra ve (ham tao nao, mo ta)."""
     if path is None:
@@ -89,11 +94,15 @@ def load_brain_factory(path):
         d = np.load(path, allow_pickle=True)
         cfg = json.loads(str(d["cfg"]))
         pol = GRUPolicy(n_hidden=int(cfg["hidden"]))
+        if d["theta"].size != pol.n_params:
+            raise ValueError(_OLD_BRAIN)
         pol.set_theta(d["theta"])
         pol.norm.load(d["norm_mean"], d["norm_var"], float(d["norm_count"]))
         desc = f"GRU {pol.n_h} no, {pol.n_params} tham so, the he {int(d['gen'])}"
     else:
         pol, meta = GRUPolicy.load(path)
+        if pol.n_in != N_IN:
+            raise ValueError(_OLD_BRAIN)
         gen = int(meta.get("gen", 0)) if "gen" in meta else 0
         desc = f"GRU {pol.n_h} no, {pol.n_params} tham so"
         if gen:
@@ -210,11 +219,29 @@ class WorldCanvas(tk.Canvas):
                 self.create_oval(x - 7, y - 7, x + 7, y + 7, outline=WARN, width=2)
                 self.create_text(x, y, text="*", fill=WARN, font=FONT_B)
 
+        # Ban ghe: chi ve CHAN, dung thu LiDAR thay.
+        for lx, ly, lr in w.legs:
+            x, y = self._pt(lx, ly)
+            r = max(1.5, lr * self._scale)
+            self.create_oval(x - r, y - r, x + r, y + r, fill="#8a7a5a",
+                             outline="")
+
+        # Nguoi: than mo (de biet cho va cham), hai chan ro; chan dang nhac
+        # len thi chi con vien - LiDAR khong thay no.
         for m in w.movers:
             x, y = self._pt(m.x, m.y)
             r = m.radius * self._scale
-            self.create_oval(x - r, y - r, x + r, y + r, fill="#4a3f6b",
-                             outline="#6b5da0")
+            self.create_oval(x - r, y - r, x + r, y + r, outline="#4a3f6b",
+                             dash=(2, 3))
+            for lx, ly, lr in m.leg_circles():
+                px, py = self._pt(lx, ly)
+                rr = max(2.0, P.LEG_R_HUMAN * self._scale)
+                if lr > 0:
+                    self.create_oval(px - rr, py - rr, px + rr, py + rr,
+                                     fill="#9d8fd6", outline="")
+                else:
+                    self.create_oval(px - rr, py - rr, px + rr, py + rr,
+                                     outline="#6b5da0")
 
         for r in sim.robots:
             x, y = self._pt(r.x, r.y)
@@ -344,7 +371,7 @@ class MainScreen(Screen):
         name, path = self._sel()
         if path is None:
             self.info.configure(text="Bo luat viet tay: khong phai mang, chi doc "
-                                     "48 dau vao nhu bo nao hoc duoc.")
+                                     f"{N_IN} dau vao nhu bo nao hoc duoc.")
             return
         try:
             _f, desc = load_brain_factory(path)
@@ -389,9 +416,9 @@ class NewBrainDialog(tk.Toplevel):
 
         tk.Label(self, text="So no an", bg=BG, fg=FG, font=FONT).grid(row=3, column=0,
                                                                       sticky="e", padx=10)
-        self.hidden = ttk.Combobox(self, values=("12", "16", "24", "32"),
+        self.hidden = ttk.Combobox(self, values=("24", "32", "48", "64", "96"),
                                    width=19, state="readonly")
-        self.hidden.set("16")
+        self.hidden.set("48")
         self.hidden.grid(row=3, column=1, sticky="w", pady=4, padx=(0, 20))
         self.hidden.bind("<<ComboboxSelected>>", self._count)
 
@@ -414,7 +441,7 @@ class NewBrainDialog(tk.Toplevel):
     def _count(self, _e=None):
         h = int(self.hidden.get())
         n = GRUPolicy(n_hidden=h).n_params
-        self.note.configure(text=f"GRU 48 -> {h} -> 2, {n} tham so.\n"
+        self.note.configure(text=f"GRU {N_IN} -> {h} -> 2, {n} tham so.\n"
                                  f"no cang nhieu cang manh nhung ES cang lau hoi tu.")
 
     def _create(self):
@@ -474,7 +501,7 @@ class TrainScreen(Screen):
     # ------------------------------------------------------------------
     def _build_setup(self):
         f = self.setup
-        hidden = 16
+        hidden = 48
         if self.brain_path and self.brain_path.endswith(".npz"):
             try:
                 _fac, desc = load_brain_factory(self.brain_path)
@@ -483,7 +510,7 @@ class TrainScreen(Screen):
                 pass
         src = ("bat dau tu bo nao: " + self.brain_name
                if self.brain_path else "bo luat viet tay khong huan luyen duoc "
-                                       "- se tao bo nao moi 16 no")
+                                       "- se tao bo nao moi 48 no")
         tk.Label(f, text=src, bg=PANEL, fg=(FG if self.brain_path else WARN),
                  font=FONT_B).grid(row=0, column=0, columnspan=8, sticky="w",
                                    padx=16, pady=(12, 8))
@@ -508,7 +535,7 @@ class TrainScreen(Screen):
         self.vars = {}
         specs = [
             ("pop", "Quan the", 24, "so ca the moi the he (chan, chia doi guong)"),
-            ("steps", "So buoc/lan", 400, "moi lan danh gia dai bao nhieu buoc"),
+            ("steps", "So buoc/lan", 1200, "moi lan danh gia dai bao nhieu buoc (1200 = 60 s)"),
             ("robots", "So xe", 3, "so xe tren mot mat bang khi huan luyen"),
             ("episodes", "So mat bang", 2, "nho cung duoc vi da dung chung hat giong"),
             ("jobs", "So luong", max(1, (os.cpu_count() or 2)),
@@ -530,7 +557,7 @@ class TrainScreen(Screen):
                      ).grid(row=row + 1, column=col * 2, columnspan=2,
                             sticky="w", padx=16)
         self.hidden = hidden
-        tk.Label(f, text=f"mang: GRU 48 -> {hidden} -> 2", bg=PANEL, fg=DIM,
+        tk.Label(f, text=f"mang: GRU {N_IN} -> {hidden} -> 2", bg=PANEL, fg=DIM,
                  font=FONT).grid(row=99, column=0, columnspan=8, sticky="w",
                                  padx=16, pady=(6, 4))
         self._on_engine()
@@ -930,7 +957,8 @@ class WatchScreen(Screen):
             elif r.stranded:
                 st, col = "het pin", BAD
             elif r.charging:
-                st, col = "dang sac", GOOD
+                st, col = ("dang sac (tinh)" if r.charge_valid
+                           else "dang sac"), GOOD
             elif r.in_slot:
                 st, col = "cam NHAM hoc", WARN
             else:
@@ -939,8 +967,13 @@ class WatchScreen(Screen):
             lab.configure(
                 text=(f"{chr(ord('A') + r.id)} ma{r.code} "
                       f"[{'#' * bars}{'.' * (12 - bars)}] {r.battery * 100:3.0f}% "
-                      f"{lamp} {st}  sac{r.n_charges} nham{r.n_wrong_dock}"),
-                fg=col)
+                      f"{lamp} {st}  cham {r.task_beacons}/{P.TASK_BEACONS} "
+                      f"sac {r.task_charges}/{P.TASK_CHARGES} "
+                      f"nha {100 * self.sim.grid.fraction(r.seen_cells):3.0f}%"
+                      + ("  XONG" if (r.task_beacons >= P.TASK_BEACONS and
+                                      r.task_charges >= P.TASK_CHARGES) else "")),
+                fg=(GOOD if (r.task_beacons >= P.TASK_BEACONS and
+                             r.task_charges >= P.TASK_CHARGES) else col))
         while self._log_at < len(self.sim.log):
             t, rid, txt = self.sim.log[self._log_at]
             self._log_at += 1

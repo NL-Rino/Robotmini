@@ -113,5 +113,46 @@ class TestEngines(unittest.TestCase):
         self.assertTrue(os.path.basename(a[0]).startswith("python"))
 
 
+class TestVeCanNha(unittest.TestCase):
+    """Ve can nha (chan ban ghe, hai chan nguoi) khong duoc no.
+
+    Khong co man hinh o day, nen thay Canvas bang mot cai dem so lan ve.
+    """
+
+    def test_ve_duoc_can_nha_va_nguoi(self):
+        from sim.fleet import FleetSim
+
+        class Dem:
+            def __init__(self, sim):
+                self.sim = sim
+                self.n = 0
+                self._scale, self._ox, self._oy = 50.0, 12.0, 500.0
+
+            def _fit(self):
+                pass
+
+            def delete(self, *_a):
+                pass
+
+            def _pt(self, x, y):
+                return app.WorldCanvas._pt(self, x, y)
+
+            def __getattr__(self, name):
+                if name.startswith("create_"):
+                    def ve(*_a, **_k):
+                        self.n += 1
+                    return ve
+                raise AttributeError(name)
+
+        sim = FleetSim(seed=3, n_robots=3)
+        c = Dem(sim)
+        app.WorldCanvas.redraw(c)
+        # it nhat: tuong + chan ghe + 2 chan moi nguoi
+        self.assertGreater(c.n, len(sim.world.legs) + 2 * len(sim.world.movers))
+        for _ in range(30):                  # nguoi buoc, chan doi trang thai
+            sim.step({})
+        app.WorldCanvas.redraw(c)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

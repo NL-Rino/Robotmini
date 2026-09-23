@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(
 import numpy as np
 import torch
 
+from sim import params as P
 from train.policy import GRUPolicy
 from train.reward import CHARGE_LATCH, LOITER_CAP
 from turbo import sim as TS, world as TW
@@ -41,7 +42,7 @@ class TestPolicyMatchesV1(unittest.TestCase):
         v1 = GRUPolicy(n_hidden=H, seed=11)
         rng = np.random.default_rng(2)
         # bo chuan hoa KHONG tam thuong - day la cho de sai nhat
-        v1.norm.load(rng.normal(0, 0.5, 48), rng.uniform(0.2, 3.0, 48), 1e5)
+        v1.norm.load(rng.normal(0, 0.5, P.N_INPUTS), rng.uniform(0.2, 3.0, P.N_INPUTS), 1e5)
 
         bp = BatchPolicy(H, DEV)
         bp.set_norm(*v1.norm.state()[:2])
@@ -51,7 +52,7 @@ class TestPolicyMatchesV1(unittest.TestCase):
         hv = v1.new_state()
         worst = 0.0
         for _ in range(40):
-            o = rng.normal(0.0, 1.0, 48)
+            o = rng.normal(0.0, 1.0, P.N_INPUTS)
             y2, h = bp.step(p, torch.tensor(o, dtype=torch.float32)[None, None],
                             h)
             y1, hv = v1.step(o, hv)

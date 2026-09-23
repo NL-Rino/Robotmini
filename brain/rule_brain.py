@@ -1,8 +1,8 @@
 """Bo luat viet tay - BAN MAU DE XEM MO PHONG CHAY, khong phai giao an.
 
-Bo luat nay chi doc 48 dau vao giong het bo nao hoc duoc. No khong duoc
+Bo luat nay chi doc 64 dau vao giong het bo nao hoc duoc. No khong duoc
 nhin vao toa do that, khong biet hoc nao mang ma nao, khong biet no dang o
-dau tren ban do. Nho vay no chung minh duoc mot dieu: 48 dau vao la DU de
+dau tren ban do. Nho vay no chung minh duoc mot dieu: 64 dau vao la DU de
 lam tron quy trinh - long nhong, thay den bao sac thi ve, lui duoi vao hoc,
 hoi tin hieu, cam nham thi rut ra tim hoc khac.
 
@@ -29,8 +29,14 @@ def _drive(v, w):
 
 
 def _fan(obs, k):
-    """Khoang cach met o quat k (0 = truoc mui, tang theo chieu trai)."""
-    return (1.0 - float(obs[PC.I_FANS + (k % P.N_LIDAR_FANS)])) * P.LIDAR_MAX
+    """Khoang cach met o huong k*30 do (0 = truoc mui, tang theo chieu trai).
+
+    Tinh theo PHAN MUOI HAI vong tron chu khong theo so quat, de bo luat
+    khong phai viet lai moi lan doi so quat (12 -> 24 o ban can nha).
+    """
+    n = P.N_LIDAR_FANS
+    i = int(round(k * n / 12.0)) % n
+    return (1.0 - float(obs[PC.I_FANS + i])) * P.LIDAR_MAX
 
 
 def _cand(obs, k):
@@ -163,6 +169,9 @@ class RuleBrain:
         if state != self.state:
             self.state = state
             self.t_state = t
+            if state == "ve-tram":
+                self.best_d = 1e9
+                self.t_best = t
 
     def _in_state(self, t):
         return t - self.t_state
@@ -205,7 +214,9 @@ class RuleBrain:
             self._go("dang-sac", t)
             self.tries = 0
             self.bad = []
-            if soc <= 0.97:
+            # Nam yen cho toi khi DAY HAN: rut ra giua chung thi lan sac do
+            # khong duoc tinh (de bai).
+            if soc < P.BATT_FULL:
                 return 0.0, 0.0
 
         # Den bao sac nhap nhay: dau vao chi nhap nhay, KHONG ai cuop lai.
@@ -243,7 +254,8 @@ class RuleBrain:
     # ------------------------------------------------------------------ lai xe
     def _avoid(self, obs, hard=0.42):
         """Tra ve lenh tranh vat neu can, khong thi None."""
-        front = min(_fan(obs, 0), _fan(obs, 1) * 0.9, _fan(obs, 11) * 0.9)
+        front = min(_fan(obs, 0), _fan(obs, 0.5), _fan(obs, 11.5),
+                    _fan(obs, 1) * 0.9, _fan(obs, 11) * 0.9)
         if front >= hard:
             return None
         left = _fan(obs, 2) + _fan(obs, 3)
@@ -362,10 +374,35 @@ class RuleBrain:
         # Diem cho: tren truc, truoc mieng 0,65 m.
         tx = sx + 0.65 * math.cos(sa)
         ty = sy + 0.65 * math.sin(sa)
-        if math.hypot(tx, ty) < 0.28 or self._in_state(t) > 60.0:
+        d = math.hypot(tx, ty)
+        if d < 0.28 or self._in_state(t) > 60.0:
             self._go("tim-hoc", t)
             return 0.0, 0.0
+        # Can nha nhieu phong: bo thang toi cho nho thi hay dam vao tuong
+        # ngan. Sau vai giay khong lai gan hon duoc thi men theo tuong mot
+        # doan - kieu "con bo" - cho toi khi lot qua duoc o cua.
+        if d < getattr(self, "best_d", 1e9) - 0.3:
+            self.best_d = d
+            self.t_best = t
+        elif t - getattr(self, "t_best", t) > 6.0:
+            self.orbit_dir = -self.orbit_dir
+            self._go("vong-tuong", t)
+            return 0.0, 0.0
         return self._seek(tx, ty)
+
+    def _st_vong_tuong(self, obs, t, dt, in_slot, id_ok, soc):
+        """Men theo tuong (ben phai hoac trai, doi luot) trong vai giay."""
+        if self._in_state(t) > 7.0:
+            self._go("ve-tram", t)
+            return _drive(0.2, 0.0)
+        side = 1.0 if self.orbit_dir > 0 else -1.0     # +1: tuong ben phai
+        front = min(_fan(obs, 0), _fan(obs, 0.5), _fan(obs, 11.5))
+        if front < 0.45:
+            return _drive(0.04, 2.0 * side)
+        wall = _fan(obs, 9) if side > 0 else _fan(obs, 3)
+        err = wall - 0.45
+        w = max(-1.6, min(1.6, 1.8 * err)) * -side
+        return _drive(0.35, w)
 
     def _st_tim_hoc(self, obs, t, dt, in_slot, id_ok, soc):
         """Da dung truoc mieng: quay mat vao, do hoc, hoi den hong ngoai.
@@ -504,7 +541,7 @@ class RuleBrain:
         return 0.0, 0.0
 
     def _st_dang_sac(self, obs, t, dt, in_slot, id_ok, soc):
-        if soc > 0.97 or not in_slot:
+        if soc >= P.BATT_FULL or not in_slot:
             self._go("rut-ra", t)
             return _drive(0.3, 0.0)
         return 0.0, 0.0

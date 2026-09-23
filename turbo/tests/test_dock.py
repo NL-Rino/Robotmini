@@ -42,6 +42,15 @@ def _clear_shot(w, dock, dist):
     for m in w.movers:
         if math.hypot(m.x - px, m.y - py) < m.radius + 0.6:
             return None
+    # Can nha co ban ghe: chan ghe dung giua duong nhin (hay sat mieng hoc)
+    # thi khong con la "duong nhin trong" nua.
+    ux, uy = -math.cos(dock.theta), -math.sin(dock.theta)
+    for cx, cy, _r in w.legs:
+        t = (cx - px) * ux + (cy - py) * uy
+        if -0.3 < t < dist + 0.3:
+            lat = abs(-(cx - px) * uy + (cy - py) * ux)
+            if lat < 0.6:
+                return None
     return px, py
 
 

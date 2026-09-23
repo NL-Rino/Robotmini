@@ -56,14 +56,25 @@ def _sync(dev):
 
 
 def _poses(worlds, per_map, seed=4):
-    """Vi tri ngau nhien tren san, khong nam sat hoc, giong ban v1."""
+    """Vi tri ngau nhien tren san, khong nam sat hoc, giong ban v1.
+
+    Can nha nhieu phong: tu mot cho bat ky thi hoc thuong nam o phong khac,
+    khuat sau tuong - do bo do hoc o do la do cai khong nhin thay. Nen o
+    day chon cho TRUOC MAT mot cai hoc (0,8-3 m, lech truc duoi 70 do),
+    cung phong voi no, roi quay mui ngau nhien.
+    """
     rng = random.Random(seed)
     out = []
     for wi, w in enumerate(worlds):
         got = 0
-        while got < per_map:
-            px = rng.uniform(0.5, 5.9)
-            py = rng.uniform(0.5, 4.3)
+        tries = 0
+        while got < per_map and tries < 20000:
+            tries += 1
+            dk = w.docks[rng.randrange(len(w.docks))]
+            dist = rng.uniform(0.8, 3.0)
+            a = dk.theta + rng.uniform(-1.2, 1.2)
+            px = dk.x + dist * math.cos(a)
+            py = dk.y + dist * math.sin(a)
             th = rng.uniform(-math.pi, math.pi)
             if not w.on_floor(px, py):
                 continue
@@ -71,6 +82,9 @@ def _poses(worlds, per_map, seed=4):
                 continue
             d = point_segment_distance(px, py, w.static_segments)
             if d.size and float(d.min()) < P.BODY_RADIUS + 0.02:
+                continue
+            if any(math.hypot(px - cx, py - cy) < P.BODY_RADIUS + cr + 0.02
+                   for cx, cy, cr in w.legs):
                 continue
             out.append((wi, px, py, th))
             got += 1
@@ -266,7 +280,7 @@ def measure_duo(spec="dml,cpu", pop=64, steps=150, robots=3, maps=1,
     bp0 = BatchPolicy(hidden, torch.device("cpu"))
     th = torch.randn(pop, bp0.n_params,
                      generator=torch.Generator().manual_seed(9)) * 0.2
-    norm = (_np.zeros(48), _np.ones(48))
+    norm = (_np.zeros(P.N_INPUTS), _np.ones(P.N_INPUTS))
     work = pop * maps * robots * steps
     seeds = [3, 5][:maps] or [3]
 
